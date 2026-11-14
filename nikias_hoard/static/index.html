@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es" data-hoard-app="nikias" data-hoard-copilot-position="left">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1c141a">
+  <title>Nikias's Hoard</title>
+  <link rel="icon" href="/icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/hoard-theme.css">
+  <link rel="stylesheet" href="/app.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three/three.module.min.js"}}</script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="/icon-192.png" alt="" class="brand-icon">
+      <span class="brand-name">Nikias's Hoard</span>
+    </div>
+    <div class="project-title" id="project-title"></div>
+    <div class="job" id="job" hidden>
+      <span class="job-stage" id="job-stage"></span>
+      <span class="job-bar"><span id="job-fill"></span></span>
+      <button class="btn small" id="job-cancel" type="button">Cancelar</button>
+    </div>
+    <button class="btn small" id="btn-skills" title="Procedimientos de la biblioteca de skills que reciben los agentes que se conectan a esta app">Skills</button>
+    <button class="btn small" id="btn-settings" title="Carpetas, colores por figura, filamentos y formatos de exportación">Ajustes</button>
+  </header>
+
+  <main class="layout">
+    <aside class="side left">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="library" role="tab">Biblioteca</button>
+        <button class="tab" data-tab="projects" role="tab">Proyectos</button>
+      </div>
+      <div class="pane" id="pane-library">
+        <div class="row">
+          <input type="search" id="lib-search" class="input" placeholder="Buscar una figura" aria-label="Buscar en la biblioteca">
+          <button class="btn small" id="lib-refresh" title="Volver a leer las carpetas">Releer</button>
+        </div>
+        <select id="lib-group" class="input" aria-label="Colección"></select>
+        <div id="lib-list" class="list"></div>
+      </div>
+      <div class="pane" id="pane-projects" hidden>
+        <div id="project-list" class="list"></div>
+      </div>
+    </aside>
+
+    <section class="center">
+      <div class="viewbar">
+        <div class="seg" id="view-seg" role="group" aria-label="Qué se ve">
+          <button data-what="color" class="active" title="Los colores de la paleta">Color</button>
+          <button data-what="filament" title="Los colores de los filamentos con los que se imprimirá">Filamento</button>
+          <button data-what="regions" title="Las regiones en las que está cortada la figura">Regiones</button>
+          <button data-what="clay" title="La figura sin color">Arcilla</button>
+        </div>
+        <div class="seg" id="tool-seg" role="group" aria-label="Herramienta">
+          <button data-tool="orbit" class="active" title="Girar la figura">Girar</button>
+          <button data-tool="region" title="Clic: pinta la región entera con el color activo">Región</button>
+          <button data-tool="patch" title="Clic: pinta la mancha de un solo color que tocas">Mancha</button>
+          <button data-tool="brush" title="Arrastra: pinta bajo el cursor">Pincel</button>
+        </div>
+        <label class="tools" id="brush-box" hidden><span class="viewinfo">Pincel</span><input type="range" id="brush-size" min="0.3" max="12" step="0.1" value="2"><span class="viewinfo" id="brush-mm">2 mm</span></label>
+        <button class="btn small" id="btn-undo" disabled title="Deshacer el último cambio de color">Deshacer</button>
+        <span class="viewinfo" id="view-info"></span>
+        <span class="spacer"></span>
+        <button class="btn primary" id="btn-color" disabled title="Colorea desde las referencias: pasa el color de un modelo que encaje con la figura o, si no lo hay, lo decide el modelo de visión">Colorear</button>
+        <button class="btn" id="btn-color-ai" disabled title="El modelo de visión lee las referencias, elige la paleta, reparte los colores por regiones y revisa su resultado">Colorear con IA</button>
+        <button class="btn" id="btn-clean" disabled title="Endereza los bordes entre colores y absorbe las manchas demasiado pequeñas para imprimirse">Limpiar</button>
+        <button class="btn" id="btn-export" disabled title="Escribe los 3MF ya pintados junto a la figura">Exportar</button>
+      </div>
+      <div class="viewport" id="viewport">
+        <div class="empty" id="empty">
+          <h1>Elige una figura de la biblioteca</h1>
+          <p>Nikias reparte unos pocos colores de filamento por la figura a partir de un modelo con texturas, de imágenes de referencia o de lo que decida el modelo de visión, y la deja en un 3MF que el laminador abre ya pintado.</p>
+        </div>
+        <div class="loading" id="loading" hidden>Cargando la figura…</div>
+      </div>
+      <div class="resultbar" id="resultbar"></div>
+    </section>
+
+    <aside class="side right" id="right" hidden>
+      <section class="card">
+        <h2>Paleta <small id="pal-count"></small></h2>
+        <div id="pal-list" class="swatches"></div>
+        <div class="palbar">
+          <button class="btn small" id="pal-add" title="Añadir un color a la paleta">Añadir color</button>
+          <label class="tools"><span class="viewinfo">Colores</span><input type="number" id="pal-n" class="input" min="1" max="16" step="1" title="Deja la paleta en este número de colores"></label>
+          <button class="btn small" id="pal-snap" title="Cambia cada color por el del filamento más parecido de tu estantería">Ajustar a filamentos</button>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Referencias <small id="ref-count"></small></h2>
+        <div id="ref-list" class="refs"></div>
+        <div class="drop" id="ref-drop">Suelta o pega aquí imágenes de referencia</div>
+        <div class="palbar">
+          <button class="btn small" id="ref-find" title="Busca en tus carpetas de referencias modelos e imágenes con el nombre de la figura">Buscar por nombre</button>
+          <button class="btn small" id="ref-path" title="Añade un modelo con texturas, una imagen o una carpeta por su ruta">Añadir por ruta</button>
+          <button class="btn small" id="ref-file">Subir imagen</button>
+          <input type="file" id="ref-input" accept="image/*" multiple hidden>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Regiones <small id="reg-count"></small></h2>
+        <label class="field"><span>Detalle del corte</span>
+          <select id="reg-detail" class="input">
+            <option value="1">1 · partes grandes</option><option value="2">2</option><option value="3">3 · medio</option><option value="4">4</option><option value="5">5 · cada línea grabada</option>
+          </select></label>
+      </section>
+      <section class="card" id="director-card" hidden>
+        <h2>Lo que decidió el modelo <small id="director-model"></small></h2>
+        <div id="director-log" class="dlog"></div>
+      </section>
+    </aside>
+  </main>
+  <div id="toasts" class="toasts"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
