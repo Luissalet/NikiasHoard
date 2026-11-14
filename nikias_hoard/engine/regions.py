@@ -134,6 +134,43 @@ def widen(mask: np.ndarray, mesh: Mesh, rings: int) -> np.ndarray:
     return mask
 
 
+def merge_unfolded(labels: np.ndarray, mesh: Mesh, fold: np.ndarray, least: float = 0.5, largest: float = 0.015) -> np.ndarray:
+    """Closing the gaps of the folds can also pinch a small surface in two where nothing is engraved (the white of an
+    eye between its lid and its iris). Two regions whose common border has less than ``least`` of its length on a fold
+    become one, as long as together they stay under ``largest`` of the surface: a big part keeps whatever the closed
+    gaps separated from it, which is what closing them is for."""
+    i, j, length = mesh.pairs
+    near = widen(fold, mesh, 1)                            # regions grown from both sides meet on the fold or beside it;
+    on = (near[i] | near[j]).astype(np.float64)            # the crest of a thin raised line between two folds counts too
+    limit = largest * float(mesh.areas.sum())
+    for _ in range(6):
+        a, b = labels[i], labels[j]
+        d = a != b
+        if not d.any():
+            break
+        R = int(labels.max()) + 1
+        area = np.bincount(labels, mesh.areas, R)
+        lo, hi = np.minimum(a[d], b[d]), np.maximum(a[d], b[d])
+        key, inv = np.unique(lo * R + hi, return_inverse=True)
+        total = np.bincount(inv, length[d])
+        folded = np.bincount(inv, length[d] * on[d])
+        weak = (folded < least * total) & (area[key // R] + area[key % R] < limit)
+        if not weak.any():
+            break
+        order = np.argsort(folded[weak] / total[weak])     # one merge per region and round, the weakest border first
+        taken = np.zeros(R, bool)
+        rows, cols = [], []
+        for k in np.flatnonzero(weak)[order]:
+            x, y = int(key[k] // R), int(key[k] % R)
+            if not taken[x] and not taken[y]:
+                taken[x] = taken[y] = True
+                rows.append(x)
+                cols.append(y)
+        g = sparse.coo_matrix((np.ones(len(rows), np.int8), (rows, cols)), shape=(R, R))
+        labels = csgraph.connected_components(g, directed=False)[1].astype(np.int64)[labels]
+    return np.unique(labels, return_inverse=True)[1].astype(np.int64)
+
+
 def segment(mesh: Mesh, detail: int = 4, max_regions: int = 150) -> np.ndarray:
     """A region index per face, regions numbered from the largest."""
     scale, turn, share, gap = DETAIL[int(np.clip(detail, 1, 5))]
@@ -155,6 +192,8 @@ def segment(mesh: Mesh, detail: int = 4, max_regions: int = 150) -> np.ndarray:
         else:
             labels[seen] = inv
     labels = _spread(labels.astype(np.int64), mesh)
+    if rings:
+        labels = merge_unfolded(labels, mesh, fold)
     labels = merge_small(labels, mesh, float(mesh.areas.sum()) * share, max_regions)
     area = np.bincount(labels, mesh.areas)
     rank = np.empty(len(area), np.int64)

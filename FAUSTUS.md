@@ -22,7 +22,8 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
 - Regions (`regions_set`): face normals are averaged over a distance tied to the figure's size and faces where they
   turn inwards faster than a threshold are folds. The folds are widened by as many face rings as close a gap of a set
   share of the figure's diagonal (an engraved outline left open still separates), the connected components of the rest
-  are the seeds (specks dropped), the seeds grow back ring by ring until they meet, regions under a share of the
+  are the seeds (specks dropped), the seeds grow back ring by ring until they meet, two regions whose common border
+  has under half its length on a fold become one when together they stay under 1.5 % of the surface, regions under a share of the
   surface join the neighbour they share the longest border with, and the count is capped by `max_regions` (150).
   `detail` 1-5 (default 4) sets distance, threshold, smallest share and gap. Every size is a share of the figure, so
   the same figure at another scale cuts identically. Without arguments it
@@ -44,13 +45,15 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
     reduced to `colors` (CIELAB k-means on colour bins with dampened weights, `accent`), borders are smoothed and
     small patches absorbed. The result reports the fit, how many colours the texture asks for and the share of
     faces far from the model. `palette_set count` chooses the colours again from the stored face colours.
-  - `mode: ai`: a project with no sources first runs `source_fetch` (setting `web_references`). The vision model (the
-    family's, or `llm_url`/`llm_model`) chooses the palette from the references and the clay figure and lists the
+  - `mode: ai`: a project with no sources first runs `source_fetch` (setting `web_references`). References go to the model one picture
+    each (up to three, the user's own first, the looked-up one last). The vision model (the family's, or
+    `llm_url`/`llm_model`) chooses the palette from the references and the clay figure and lists the
     character's parts with the palette index of each (the chart); is shown every region as a tile (figure in clay,
     that region in a marker colour, from the best of nine views, close-up for parts under 3 % of the tile), twelve
     per question in three pictures, and answers which part each is and its colour, with the chart in the question;
     regions flagged mixed, and the parts it says hold colours nobody received, are cut at a finer detail and asked
-    again in close-up; then it reviews the coloured figure, plain and with region numbers (`rounds`, default
+    again in close-up; small regions (under 1.2 % of the surface) whose border is 80 % or more with one other colour
+    get a second look in close-up (feature of its own, or part of what surrounds it); then it reviews the coloured figure, plain and with region numbers (`rounds`, default
     `director_rounds`) and names the parts to change; colours left on no face are dropped. An answer that is not JSON
     is asked for once more; a failed review, idle-colour question or close-up is logged and skipped. `wish` is passed to every question. The log is `project.director`.
   - `mode: auto`: model when a source is `good`, else ai.
@@ -73,7 +76,8 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
   the figure, faces the cut created take the colour around them. Default folder: `Multicolor` next to the figure, or
   `export_dir/<group>`. `GET /api/projects/<id>/download/<bambu|prusa|color>` sends one file to the browser.
 - Studio (`static/`): library with photos and collection filter, projects, 3-D view with one colour per face, view
-  modes, tools (orbit, region, patch, brush sized in % of the figure, Alt + click picker, undo), palette card,
+  modes, tools (orbit; piece bucket with the piece under the cursor lit, click fills and drag still orbits, Shift +
+  click for the patch; patch bucket; brush sized in % of the figure; keys 1-9 choose the colour; Alt + click picker; undo), palette card,
   references card (drop, paste, upload, by path, find by name, look the character up on the web), region detail, what
   the model decided, export dialog, settings (folders, colours per figure, smallest patch in %, web references, review
   rounds, export folder, vision model).

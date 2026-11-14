@@ -200,3 +200,16 @@ def test_an_outline_left_open_still_separates_and_the_cut_ignores_scale():
     assert (cut[inside] == 1).all()
     assert reg.segment(plate, 3).max() == 0                                         # a coarser cut closes narrower gaps only
     assert (reg.segment(meshes.Mesh(plate.P * 25.0, plate.F), 4) == cut).all()      # the same figure 25 times larger cuts the same
+
+
+def test_a_small_surface_pinched_in_two_is_one_piece_and_big_parts_keep_their_cut():
+    plate = shapes.engraved_plate()
+    cut = reg.segment(plate, 4).astype(np.int64)
+    scale, turn, _, _ = reg.DETAIL[4]
+    fold = reg.fold_strength(plate, max(plate.diagonal * scale, plate.mean_edge * 1.5)) > turn
+    x = plate.centroids[:, 0]
+    disc = np.where((cut == 1) & (x > 0), 2, cut)                                   # the engraved circle cut in two where nothing is engraved
+    merged = reg.merge_unfolded(disc, plate, fold, largest=0.5)
+    assert merged.max() == 1 and (np.bincount(merged) == np.bincount(cut)).all()    # one circle again, still apart from the plate
+    outside = np.where((cut == 0) & (x > 0), 2, cut)                                # the same cut through the big surface around it
+    assert reg.merge_unfolded(outside, plate, fold, largest=0.5).max() == 2         # stays: together the halves are a big part

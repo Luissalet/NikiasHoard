@@ -24,7 +24,8 @@ proporción a ella, así que se colorea igual a cualquier escala.
   guante con su puño, una línea grabada) la superficie se pliega hacia dentro. Esos pliegues separan las regiones.
   Un contorno grabado casi nunca cierra del todo (se desvanece al tocar otro), así que los pliegues se ensanchan hasta
   cerrar los huecos estrechos antes de separar: la cara, cada ojo, el interior de una oreja o una cinta salen como
-  regiones propias aunque su línea tenga cortes. El detalle 1-5 va de partes grandes a cada línea grabada (4 por
+  regiones propias aunque su línea tenga cortes. Dos trozos pequeños que ese cierre separa sin que haya nada grabado
+  entre ellos (el blanco de un ojo pellizcado entre el párpado y el iris) vuelven a ser una pieza. El detalle 1-5 va de partes grandes a cada línea grabada (4 por
   defecto). Las regiones son lo que recibe color, del modelo o de un clic.
 - **Color desde un modelo con texturas**: se añade el modelo del juego o el `.blend` donde se posó la figura (OBJ,
   GLB, glTF, DAE; FBX y `.blend` a través de Blender, con la pose guardada aplicada). Se coloca solo sobre la figura,
@@ -41,6 +42,9 @@ proporción a ella, así que se colorea igual a cualquier escala.
   región a región (la figura en arcilla con una sola región marcada, desde el lado donde más se ve, con un primer
   plano para las pequeñas) y dice qué parte es y, por esa tabla, qué color lleva. Las regiones que encuentra mezcladas, o que
   esconden un color que nadie recibió (los ojos dentro de una cabeza), se cortan más fino y se vuelven a preguntar.
+  Las partes pequeñas que desentonan con todo lo que las rodea (un dedo rosa en un guante blanco) se le vuelven a
+  enseñar en primer plano para que diga si son un rasgo propio o más de lo que las rodea. Las referencias le llegan
+  una a una y en grande, las tuyas antes que la buscada en internet.
   Luego mira su propio coloreado junto a las referencias, con el número de cada región escrito encima, y corrige las
   partes que ve mal. Lo que decidió y por qué queda en el proyecto. Una respuesta ilegible del modelo se pide otra
   vez; si la revisión falla, se pierde la revisión y no el coloreado.
@@ -48,7 +52,9 @@ proporción a ella, así que se colorea igual a cualquier escala.
   pequeño pero distinto conservar el suyo. Se puede cambiar un color o su nombre, añadir o fundir colores y elegir
   cuál es el de la pieza (el color 1, el que toman los triángulos sin pintar). Un color que no acaba en ninguna cara
   se quita.
-- **Pintar a mano**: un clic rellena una región, otro la mancha de un solo color bajo el cursor, o se arrastra un
+- **Pintar a mano**: con «Pieza» (la herramienta con la que se abre una figura ya coloreada) la pieza bajo el cursor
+  se ilumina y un clic la pinta entera con el color activo; arrastrar sigue girando la figura, las teclas 1-9 eligen
+  color y Mayús + clic pinta solo la mancha. «Mancha» rellena la mancha de un solo color bajo el cursor, o se arrastra un
   pincel cuyo tamaño es un porcentaje del de la figura; Alt + clic coge un color; se deshacen los últimos 20 cambios.
 - **Limpieza**: los bordes entre colores se enderezan y las manchas más estrechas que un porcentaje del tamaño de la
   figura (1,2 % por defecto) se unen a lo que las rodea. Cada color muestra su parte de la superficie y sus manchas.

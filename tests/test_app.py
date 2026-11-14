@@ -334,3 +334,45 @@ def test_the_smallest_patch_is_a_share_of_the_figure_whatever_its_size(client):
     spot = float(fig.mesh.areas[fig.labels == 1].sum()) ** 0.5 / fig.mesh.diagonal * 100       # the spot's side, in % of the figure
     assert call(client, "clean", project_id=pid, min_patch=spot * 0.5, smooth=0)["islands_removed"] == 0
     assert call(client, "clean", project_id=pid, min_patch=spot * 1.5, smooth=0)["islands_removed"] == 1
+
+
+def test_a_small_part_that_clashes_with_its_surroundings_gets_a_second_look(client):
+    from nikias_hoard import director
+    pid = open_amy(client)["id"]
+    call(client, "palette_set", project_id=pid, colors=[{"hex": "#f5f5f5", "name": "blanco"}, {"hex": "#f08cb4", "name": "rosa"}, {"hex": "#2e9e4f", "name": "verde"}])
+    call(client, "paint", project_id=pid, color=0, everything=True)
+    fig = client.svc._figure(pid)
+    c = fig.mesh.centroids
+    finger = np.linalg.norm(c - [0, -12, 12], axis=1) < 2.0                    # a small patch in the middle of the white body: its own region
+    eye = np.linalg.norm(c - [0, 12, 12], axis=1) < 2.0
+    fig.regions = fig.regions.copy()
+    fig.regions[finger], fig.regions[eye] = 3, 4
+    fig.labels[finger], fig.labels[eye] = 1, 2
+    odd = director.odd_ones(fig)
+    assert sorted((o["region"], o["color"], o["around"]) for o in odd) == [(3, 1, 0), (4, 2, 0)]
+    ask, asked = fake_model([{"parts": {"3": {"is": "finger of the glove", "color": 0}, "4": {"is": "eye", "color": 2}, "0": {"color": 1}}}])
+    client.svc.llm.ask = ask
+    parts = {3: "skin", 4: "eye"}
+    fixed = director.second_look(client.svc, client.svc.store.get(pid), fig, [], client.svc.store.get(pid)["palette"], parts, odd)
+    assert fixed == {3: 0} and parts[3] == "finger of the glove"               # the finger joins the glove; the eye keeps its colour; nobody else is touched
+    assert "is now rosa (1); everything around it is blanco (0)" in asked[0]["user"] and asked[0]["images"] == 1
+
+
+def test_references_go_to_the_model_one_by_one_with_the_users_own_first(client):
+    import io
+
+    from PIL import Image
+    pid = open_amy(client)["id"]
+
+    def picture(rgb):
+        buf = io.BytesIO()
+        Image.new("RGB", (60, 40), rgb).save(buf, "PNG")
+        return buf.getvalue()
+    web = client.svc.add_image(pid, "de internet", picture((0, 0, 255)), "https://wiki.example/x")
+    project = client.svc.store.get(pid)
+    project["sources"][0]["web"] = True
+    client.svc.store.save(project)
+    client.svc.add_image(pid, "mia", picture((255, 0, 0)))
+    client.svc.add_image(pid, "mia la ultima", picture((0, 255, 0)))
+    got = [Image.open(io.BytesIO(b)).convert("RGB").getpixel((5, 5)) for b in client.svc.reference_pictures(pid)]
+    assert got == [(0, 255, 0), (255, 0, 0), (0, 0, 255)] and web["id"]        # newest of the user's first, the looked-up one last

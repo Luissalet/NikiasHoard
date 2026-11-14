@@ -74,3 +74,4 @@ def engraved_plate(n: int = 240, gap_deg: float = 3.0) -> Mesh:
     p = (i * n + j).ravel()
     F = np.concatenate([np.stack([p, p + n, p + 1], 1), np.stack([p + 1, p + n, p + n + 1], 1)]).astype(np.int32)
     return Mesh(P, F)
+

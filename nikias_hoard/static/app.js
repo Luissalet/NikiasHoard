@@ -107,6 +107,27 @@ const view = (() => {
     }
     mesh.geometry.attributes.color.needsUpdate = true;
     dirty = true;
+    lit = null;
+    if (litFaces) highlight(litFaces);
+  }
+
+  // the piece under the cursor, shown lighter so a click's reach is seen before clicking
+  let lit = null, litFaces = null;
+  function highlight(list) {
+    if (!mesh) return;
+    if (lit) { for (let n = 0; n < lit.faces.length; n++) colors.set(lit.saved.subarray(9 * n, 9 * n + 9), 9 * lit.faces[n]); lit = null; }
+    litFaces = list && list.length ? list : null;
+    if (litFaces) {
+      const saved = new Float32Array(9 * litFaces.length);
+      for (let n = 0; n < litFaces.length; n++) {
+        const o = 9 * litFaces[n];
+        saved.set(colors.subarray(o, o + 9), 9 * n);
+        for (let k = 0; k < 9; k++) colors[o + k] = colors[o + k] * 0.55 + 0.45;
+      }
+      lit = { faces: litFaces, saved };
+    }
+    mesh.geometry.attributes.color.needsUpdate = true;
+    dirty = true;
   }
 
   function hit(ev) {
@@ -132,13 +153,14 @@ const view = (() => {
   }
 
   function setTool(tool) {
-    const painting = tool !== 'orbit';
-    controls.mouseButtons = painting ? { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
+    // only the brush needs the drag for itself: with the bucket tools a click paints and a drag still turns the figure
+    controls.mouseButtons = tool === 'brush' ? { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
       : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-    host.classList.toggle('painting', painting);
+    host.classList.toggle('painting', tool !== 'orbit');
+    if (tool !== 'region') highlight(null);
   }
-  function clear() { if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh = null; dirty = true; } }
-  return { show, paint, hit, near, setTool, clear, canvas: renderer.domElement, get radius() { return radius; }, get faces() { return faces; } };
+  function clear() { lit = null; litFaces = null; if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh = null; dirty = true; } }
+  return { show, paint, hit, near, highlight, setTool, clear, canvas: renderer.domElement, get radius() { return radius; }, get faces() { return faces; } };
 })();
 
 // ------------------------------------------------------------------ colours in the view
@@ -255,7 +277,8 @@ async function setProject(p, loadMesh = false) {
     const buffer = await (await fetch(`/api/projects/${p.id}/figure.bin`)).arrayBuffer();
     view.show(buffer);
     await loadFaces();
-    $('brush-size').max = String(Math.max(2, Math.round(view.radius * 0.25)));
+    state.over = null;
+    if (p.palette.length && state.tool === 'orbit') setTool('region');          // a coloured figure opens ready to be corrected by clicking
   } else repaint();
   drawPalette(); drawRefs(); drawDirector(); drawResult(); refreshButtons();
   $('reg-detail').value = String(p.detail || 3);
@@ -485,7 +508,8 @@ function setTool(tool) {
   state.tool = tool;
   document.querySelectorAll('#tool-seg button').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
   $('brush-box').hidden = tool !== 'brush';
-  $('view-info').textContent = tool === 'orbit' ? '' : 'Botón derecho: girar · Alt + clic: coger el color';
+  $('view-info').textContent = { orbit: '', region: 'Clic: pinta la pieza · arrastrar: girar · 1-9: color · Alt + clic: coger el color',
+    patch: 'Clic: pinta la mancha · arrastrar: girar · Alt + clic: coger el color', brush: 'Botón derecho: girar · Alt + clic: coger el color' }[tool];
   view.setTool(tool);
 }
 
@@ -495,35 +519,75 @@ function needColor() {
   return false;
 }
 
-let stroke = null;
-view.canvas.addEventListener('pointerdown', async (ev) => {
-  if (ev.button !== 0 || state.tool === 'orbit' || !state.project || state.job) return;
-  const h = view.hit(ev);
-  if (!h) return;
-  if (ev.altKey) { const v = state.labels[h.face]; if (v !== UNSET) { state.color = v; drawPalette(); } return; }
+let stroke = null, press = null, hover = 0;
+
+// faces of each piece, built once per cut: what the bucket lights up and fills
+function pieceFaces(r) {
+  if (!state.pieces || state.pieces.of !== state.regions) {
+    const lists = new Map();
+    for (let f = 0; f < state.regions.length; f++) { const k = state.regions[f]; if (!lists.has(k)) lists.set(k, []); lists.get(k).push(f); }
+    state.pieces = { of: state.regions, lists };
+  }
+  return state.pieces.lists.get(r) || [];
+}
+
+async function bucket(h, tool) {
   if (!needColor()) return;
   const pid = state.project.id, color = state.color;
   if (state.what === 'clay') setWhat('color');
   try {
-    if (state.tool === 'region') {
+    if (tool === 'region') {
       const r = state.regions[h.face];
-      for (let f = 0; f < state.regions.length; f++) if (state.regions[f] === r) state.labels[f] = color;
+      for (const f of pieceFaces(r)) state.labels[f] = color;
       repaint();
       await call('paint', { project_id: pid, color, regions: [r] });
       await refreshProject(null);
-    } else if (state.tool === 'patch') {
+    } else {
       await call('paint', { project_id: pid, color, faces: [h.face] });
       await refreshProject('labels');
-    } else {
-      stroke = { points: [], normals: [], color, last: null };
-      view.canvas.setPointerCapture(ev.pointerId);
-      dab(h);
     }
   } catch (err) { fail(err); await refreshProject('labels'); }
+}
+
+view.canvas.addEventListener('pointerdown', (ev) => {
+  press = null;
+  if (ev.button !== 0 || state.tool === 'orbit' || !state.project || state.job) return;
+  if (state.tool !== 'brush') { press = { x: ev.clientX, y: ev.clientY, alt: ev.altKey, shift: ev.shiftKey }; return; }
+  const h = view.hit(ev);
+  if (!h) return;
+  if (ev.altKey) { const v = state.labels[h.face]; if (v !== UNSET) { state.color = v; drawPalette(); } return; }
+  if (!needColor()) return;
+  if (state.what === 'clay') setWhat('color');
+  stroke = { points: [], normals: [], color: state.color, last: null };
+  view.canvas.setPointerCapture(ev.pointerId);
+  dab(h);
 });
 
+// a click (the pointer went up where it went down) paints; anything longer was turning the figure
+view.canvas.addEventListener('pointerup', (ev) => {
+  const p = press;
+  press = null;
+  if (!p || ev.button !== 0 || Math.hypot(ev.clientX - p.x, ev.clientY - p.y) > 5 || !state.project || state.job) return;
+  const h = view.hit(ev);
+  if (!h) return;
+  if (p.alt) { const v = state.labels[h.face]; if (v !== UNSET) { state.color = v; drawPalette(); } return; }
+  bucket(h, p.shift ? (state.tool === 'region' ? 'patch' : 'region') : state.tool);   // Shift: the other bucket, without changing tool
+});
+
+function showPiece(ev) {
+  hover = 0;
+  if (state.tool !== 'region' || !state.project || state.job || ev.buttons) { view.highlight(null); return; }
+  const h = view.hit(ev);
+  if (!h) { view.highlight(null); state.over = null; return; }
+  const r = state.regions[h.face];
+  if (state.over === r) return;
+  state.over = r;
+  view.highlight(pieceFaces(r));
+}
+view.canvas.addEventListener('pointerleave', () => { state.over = null; view.highlight(null); });
+
 function dab(h) {
-  const r = Number($('brush-size').value);
+  const r = Number($('brush-size').value) / 100 * figureSize();
   if (stroke.last && Math.hypot(h.point[0] - stroke.last[0], h.point[1] - stroke.last[1], h.point[2] - stroke.last[2]) < r * 0.3) return;
   stroke.last = h.point;
   stroke.points.push(h.point.map((v) => Math.round(v * 1000) / 1000)); stroke.normals.push(h.normal.map((v) => Math.round(v * 1000) / 1000));
@@ -532,7 +596,7 @@ function dab(h) {
 }
 
 view.canvas.addEventListener('pointermove', (ev) => {
-  if (!stroke) return;
+  if (!stroke) { if (state.tool === 'region' && !hover) hover = requestAnimationFrame(() => showPiece(ev)); return; }
   const h = view.hit(ev);
   if (h) dab(h);
 });

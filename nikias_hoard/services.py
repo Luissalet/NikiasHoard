@@ -721,6 +721,22 @@ class Services:
             pictures.append(img)
         return render.png(pictures[0] if len(pictures) == 1 else render.sheet(pictures, columns=2 if len(pictures) > 3 else 0))
 
+    def reference_pictures(self, pid: str, limit: int = 3, size: int = 1100) -> list[bytes]:
+        """The references as the vision model gets them: each its own picture, large enough to read small parts, the
+        user's own first (they chose them; often the very pose of the figure) and what was looked up on the web last."""
+        project = self.store.get(pid)
+        d = self.store.dir(pid)
+        from PIL import Image
+        ranked = sorted(enumerate(project["sources"]), key=lambda t: (bool(t[1].get("web")), t[1]["kind"] != "image", -t[0]))
+        out = []
+        for _, s in ranked[:limit]:
+            f = d / f"src_{s['id']}.png"
+            if f.is_file():
+                im = Image.open(f).convert("RGB")
+                im.thumbnail((size, size), Image.LANCZOS)
+                out.append(render.png(im))
+        return out
+
     def reference_sheet(self, pid: str, size: int = 900, limit: int = 6):
         project = self.store.get(pid)
         d = self.store.dir(pid)

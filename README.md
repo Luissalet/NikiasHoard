@@ -24,7 +24,8 @@ figure colours the same at any scale.
   its cuff, an engraved line) the surface folds inwards. Those folds separate the regions. An engraved outline
   rarely closes all the way round (it fades where it meets another), so the folds are widened until narrow gaps shut
   before they separate: the face, each eye, the inside of an ear or a headband come out as regions of their own even
-  when their line has breaks. Detail 1-5 goes from big parts to every engraved line (4 by default). Regions are what
+  when their line has breaks. Two small pieces that this closing separates with nothing engraved between them (the
+  white of an eye pinched between its lid and its iris) become one piece again. Detail 1-5 goes from big parts to every engraved line (4 by default). Regions are what
   gets a colour, by the model or by a click.
 - **Colour from a textured model**: add the game model or the `.blend` the figure was posed in (OBJ, GLB, glTF, DAE;
   FBX and `.blend` through Blender, with the saved pose applied). It is laid over the figure by itself, whatever its
@@ -41,14 +42,18 @@ figure colours the same at any scale.
   colour each part of the character takes (hair, each piece of clothing, skin, eyes, soles, what it holds), and is
   then shown the figure one region at a time (the figure in clay with a single region marked, from the side where it shows
   most, with a close-up for small ones) and says which part it is and, from that table, its colour. Regions it finds mixed,
-  or that hold a colour nobody received (eyes inside a head), are cut finer and asked again. It then looks at its own
+  or that hold a colour nobody received (eyes inside a head), are cut finer and asked again. Small parts that clash with everything around them (a pink finger on a white glove) are shown to it again in close-up,
+  to say whether each is a feature of its own or more of what surrounds it. References reach it one by one and large,
+  yours before the one looked up on the web. It then looks at its own
   colouring next to the references, with each region's number written on it, and corrects the parts it finds wrong.
   What it decided and why is kept in the project. An answer it cannot read is asked for once more; a review that
   fails costs the review, not the colouring.
 - **Palette**: colours are compared in CIELAB and reduced with a weighted clustering that lets a small distinct
   colour keep its own. You can change a colour or its name, add or merge colours and choose which one is the
   object's own (colour 1, the one unpainted triangles take). A colour that ends on no face is dropped.
-- **Painting by hand**: click a region to fill it, fill the single-colour patch under the cursor, or drag a brush of
+- **Painting by hand**: with "Pieza" (the tool a coloured figure opens with) the piece under the cursor lights up
+  and a click fills it with the active colour; dragging still turns the figure, keys 1-9 choose the colour and
+  Shift + click fills only the patch. "Mancha" fills the single-colour patch under the cursor, or drag a brush of
   a size set as a percentage of the figure's; Alt + click picks a colour; the last 20 changes can be undone.
 - **Clean-up**: borders between colours are straightened and patches narrower than a percentage of the figure's
   size (1.2 % by default) join their surroundings, so no speckle reaches the slicer. Each colour shows its share of the surface and its patches.
