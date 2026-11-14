@@ -1,9 +1,11 @@
 """Cutting a figure into the regions a painter would fill one by one.
 
 A fused print figure has no materials, but where two parts meet (a sleeve against an arm, an ear against the head, an
-engraved line) the surface folds inwards. Normals are averaged over a small distance, faces where they turn inwards
-faster than a threshold are the folds, what the folds separate are the regions, and each fold face joins the region it
-touches. ``detail`` 1-5 goes from big parts to every engraved line."""
+engraved line) the surface folds inwards. Normals are averaged over a small distance and faces where they turn inwards
+faster than a threshold are the folds. A fold rarely closes all the way round (an engraved outline fades where it
+meets another), so the folds are widened until gaps of a given width shut, what they separate are the regions, and the
+regions then grow back over the widened folds until they meet. ``detail`` 1-5 goes from big parts to every engraved
+line. Every size is a share of the figure's own size, so a figure cuts the same at any scale."""
 
 from __future__ import annotations
 
@@ -16,9 +18,9 @@ from scipy.sparse import csgraph
 from .mesh import Mesh
 
 # detail -> (distance over which normals are averaged, as a fraction of the diagonal; inward turn in radians that makes a
-# fold; smallest region kept, as a share of the surface)
-DETAIL = {1: (0.0080, 0.55, 0.0100), 2: (0.0055, 0.42, 0.0040), 3: (0.0040, 0.32, 0.0015), 4: (0.0028, 0.24, 0.0006),
-          5: (0.0020, 0.18, 0.0002)}
+# fold; smallest region kept, as a share of the surface; widest gap in a fold that still separates, fraction of the diagonal)
+DETAIL = {1: (0.0080, 0.55, 0.0100, 0.000), 2: (0.0055, 0.42, 0.0040, 0.002), 3: (0.0030, 0.26, 0.0010, 0.004),
+          4: (0.0015, 0.14, 0.0002, 0.006), 5: (0.0015, 0.12, 0.0001, 0.010)}
 
 
 def smoothed_normals(mesh: Mesh, distance: float) -> np.ndarray:
@@ -122,15 +124,36 @@ def merge_small(labels: np.ndarray, mesh: Mesh, min_area: float, max_regions: in
     return labels
 
 
-def segment(mesh: Mesh, detail: int = 3, max_regions: int = 60) -> np.ndarray:
+def widen(mask: np.ndarray, mesh: Mesh, rings: int) -> np.ndarray:
+    """``mask`` grown by ``rings`` rings of neighbouring faces."""
+    N = mesh.neighbours
+    ok = N >= 0
+    safe = np.where(ok, N, 0)
+    for _ in range(rings):
+        mask = mask | (mask[safe] & ok).any(1)
+    return mask
+
+
+def segment(mesh: Mesh, detail: int = 4, max_regions: int = 150) -> np.ndarray:
     """A region index per face, regions numbered from the largest."""
-    scale, turn, share = DETAIL[int(np.clip(detail, 1, 5))]
+    scale, turn, share, gap = DETAIL[int(np.clip(detail, 1, 5))]
     distance = max(mesh.diagonal * scale, mesh.mean_edge * 1.5)
     fold = fold_strength(mesh, distance) > turn
+    rings = int(min(round(gap * mesh.diagonal / max(mesh.mean_edge, 1e-9)), 12))
+    wall = widen(fold, mesh, rings) if rings else fold
     i, j, _ = mesh.pairs
-    labels = _components(mesh, ~fold[i] & ~fold[j])
-    labels[fold] = -1
-    labels = np.where(labels >= 0, np.unique(labels, return_inverse=True)[1], -1) if (labels >= 0).any() else labels
+    labels = _components(mesh, ~wall[i] & ~wall[j])
+    labels[wall] = -1
+    if (labels >= 0).any():
+        seen = labels >= 0
+        ids, inv = np.unique(labels[seen], return_inverse=True)
+        area = np.bincount(inv, mesh.areas[seen])
+        keep = area >= float(mesh.areas.sum()) * share * 0.3          # a speck between folds is not a seed of its own
+        if keep.any():
+            new = np.where(keep, np.cumsum(keep) - 1, -1)
+            labels[seen] = new[inv]
+        else:
+            labels[seen] = inv
     labels = _spread(labels.astype(np.int64), mesh)
     labels = merge_small(labels, mesh, float(mesh.areas.sum()) * share, max_regions)
     area = np.bincount(labels, mesh.areas)

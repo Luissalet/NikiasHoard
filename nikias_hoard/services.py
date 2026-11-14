@@ -36,6 +36,9 @@ MAX_FACES = 6_000_000
 UNSET = lab.UNSET
 
 
+SPARE_COLORS = ("#f5f5f5", "#161616", "#c12e1f", "#f4ee2a", "#1f5fc4", "#00ae42", "#ff6a13", "#f1c6a5", "#8e9089", "#5e43b7", "#9d432c", "#f55a74")
+
+
 class _JobCancelled(Exception):
     pass
 
@@ -399,6 +402,27 @@ class Services:
         self.store.save(project)
         return entry
 
+    def fetch_reference(self, pid: str, query: str = "") -> dict[str, Any]:
+        """Look the character up by the figure's name and collection and keep the picture found as a reference."""
+        from . import references
+        project = self.store.get(pid)
+        group = str(project["source"].get("group", ""))
+        try:
+            hit = references.find(query or project["name"], group, self.settings["wikis"])
+        except Exception as exc:  # noqa: BLE001
+            raise NikiasError("unavailable", f"No se pudo buscar la referencia: {type(exc).__name__}: {exc}"[:300]) from None
+        if hit is None:
+            raise NikiasError("not_found", f"No encontré ninguna imagen de {references.clean_name(query or project['name'])}.",
+                              "Añade tú una imagen del personaje (arrástrala a la figura) o prueba con otro nombre.")
+        entry = self.add_image(pid, hit["title"] or project["name"], hit["data"], hit["page"])
+        project = self.store.get(pid)
+        for s in project["sources"]:
+            if s["id"] == entry["id"]:
+                s["web"] = True
+                entry = s
+        self.store.save(project)
+        return entry
+
     def remove_source(self, pid: str, sid: str) -> dict[str, Any]:
         project = self.store.get(pid)
         if not any(s["id"] == sid for s in project["sources"]):
@@ -493,7 +517,7 @@ class Services:
         self._push_undo(fig)
         fig.labels = pal.assign(face_rgb, colors)
         say("limpiando bordes e islas", 0.8)
-        cleaned = self._clean(fig, s["min_detail_mm"], s["smooth"])
+        cleaned = self._clean(fig, s["min_patch"], s["smooth"])
         project = self.store.get(pid)
         project["palette"] = self._palette_entries(colors)
         project["method"] = "model"
@@ -505,38 +529,30 @@ class Services:
                 "suggested_colors": suggestion["count"], **cleaned}
 
     def _palette_entries(self, colors) -> list[dict[str, Any]]:
-        spools = self.settings["filaments"]
-        out = []
-        for rgb in np.asarray(colors).reshape(-1, 3):
-            entry = {"hex": pal.to_hex(rgb), "name": pal.name_of(rgb)}
-            near = pal.nearest_filament(rgb, spools)
-            if near:
-                entry["filament"] = near
-            out.append(entry)
-        return out
+        return [{"hex": pal.to_hex(rgb), "name": pal.name_of(rgb)} for rgb in np.asarray(colors).reshape(-1, 3)]
 
-    def _clean(self, fig: Figure, min_detail_mm: float, smooth: int) -> dict[str, Any]:
+    def _clean(self, fig: Figure, min_patch: float, smooth: int) -> dict[str, Any]:
+        """``min_patch`` is a share of the figure's own size (% of its diagonal): the result is the same at any scale."""
         fig.labels = lab.smooth(fig.labels, fig.mesh, smooth)
         removed = 0
-        if min_detail_mm > 0:
-            fig.labels, removed = lab.remove_islands(fig.labels, fig.mesh, float(min_detail_mm) ** 2)
+        if min_patch > 0:
+            fig.labels, removed = lab.remove_islands(fig.labels, fig.mesh, (float(min_patch) / 100.0 * fig.mesh.diagonal) ** 2)
         return {"islands_removed": removed}
 
-    def clean(self, pid: str, min_detail_mm: Optional[float] = None, smooth: Optional[int] = None) -> dict[str, Any]:
+    def clean(self, pid: str, min_patch: Optional[float] = None, smooth: Optional[int] = None) -> dict[str, Any]:
         fig = self._figure(pid)
         s = self.settings.get()
         self._push_undo(fig)
-        out = self._clean(fig, s["min_detail_mm"] if min_detail_mm is None else float(min_detail_mm), s["smooth"] if smooth is None else int(smooth))
+        out = self._clean(fig, s["min_patch"] if min_patch is None else float(min_patch), s["smooth"] if smooth is None else int(smooth))
         self._save_labels(pid, fig)
         return {**out, "project": self.project(pid)}
 
     # ------------------------------------------------------------------ palette
     def set_palette(self, pid: str, colors: Optional[list[dict[str, Any]]] = None, count: Optional[int] = None, merge: Optional[list[int]] = None,
-                    base: Optional[int] = None, snap: bool = False) -> dict[str, Any]:
+                    base: Optional[int] = None) -> dict[str, Any]:
         project = self.store.get(pid)
         fig = self._figure(pid)
         palette = list(project["palette"])
-        spools = self.settings["filaments"]
         changed_labels = False
         if colors is not None:
             for k, c in enumerate(colors):
@@ -548,17 +564,8 @@ class Services:
                     entry["hex"] = pal.to_hex(rgb)
                     if not c.get("name") and (k >= len(palette) or not palette[k].get("custom_name")):
                         entry["name"] = pal.name_of(rgb)
-                    near = pal.nearest_filament(rgb, spools)
-                    entry["filament"] = near if near else None
-                    entry.pop("filament_chosen", None)
                 if c.get("name"):
                     entry["name"], entry["custom_name"] = str(c["name"]).strip()[:40], True
-                if c.get("filament"):
-                    spool = next((f for f in spools if f["name"].lower() == str(c["filament"]).lower()), None)
-                    if spool is None:
-                        raise NikiasError("invalid", f"No hay ningún filamento llamado {c['filament']}.", "Mira settings_get: filaments.")
-                    entry["filament"] = dict(spool, delta=round(pal.distance(pal.from_hex(entry["hex"]), pal.from_hex(spool["hex"])), 1))
-                    entry["filament_chosen"] = True
                 if k < len(palette):
                     palette[k] = entry
                 else:
@@ -593,7 +600,7 @@ class Services:
             if fig.rgb is not None and project.get("method") == "model":
                 cols = pal.reduce(fig.rgb, fig.mesh.areas, count, self.settings["accent"])
                 fig.labels = pal.assign(fig.rgb, cols)
-                self._clean(fig, self.settings["min_detail_mm"], self.settings["smooth"])
+                self._clean(fig, self.settings["min_patch"], self.settings["smooth"])
                 palette = self._palette_entries(cols)
             else:
                 while len(palette) > count:                 # the two colours that look most alike become one
@@ -604,18 +611,11 @@ class Services:
                     above = (fig.labels > b) & (fig.labels != UNSET)
                     fig.labels[above] -= 1
                     palette.pop(int(b))
-                spare = [f for f in spools if all(pal.distance(pal.from_hex(f["hex"]), pal.from_hex(c["hex"])) > 12 for c in palette)]
+                spare = [h for h in SPARE_COLORS if all(pal.distance(pal.from_hex(h), pal.from_hex(c["hex"])) > 12 for c in palette)]
                 while len(palette) < count:
-                    f = spare.pop(0) if spare else {"hex": "#808080", "name": "gris"}
-                    palette.append({"hex": f["hex"], "name": pal.name_of(pal.from_hex(f["hex"])), "filament": pal.nearest_filament(pal.from_hex(f["hex"]), spools)})
+                    h = spare.pop(0) if spare else "#808080"
+                    palette.append({"hex": h, "name": pal.name_of(pal.from_hex(h))})
             changed_labels = True
-        if snap:
-            for entry in palette:
-                near = entry["filament"] if entry.get("filament_chosen") and entry.get("filament") else pal.nearest_filament(pal.from_hex(entry["hex"]), spools)
-                if near:
-                    entry["hex"], entry["filament"] = near["hex"], dict(near, delta=0.0)
-                    if not entry.get("custom_name"):
-                        entry["name"] = pal.name_of(pal.from_hex(near["hex"]))
         project["palette"] = palette
         self.store.save(project)
         if changed_labels:
@@ -691,7 +691,7 @@ class Services:
             return fig.rgb
         table = np.full((256, 3), render.UNSET_RGB, np.uint8)
         for k, c in enumerate(project["palette"]):
-            table[k] = pal.from_hex((c.get("filament") or {}).get("hex") or c["hex"]) if what == "filament" else pal.from_hex(c["hex"])
+            table[k] = pal.from_hex(c["hex"])
         return table[fig.labels]
 
     def look(self, pid: str, what: str = "color", view: str = "iso", yaw: Optional[float] = None, pitch: Optional[float] = None, size: int = 900,
@@ -700,8 +700,8 @@ class Services:
         size = int(np.clip(size, 200, 1600))
         if what == "sources":
             return render.png(self.reference_sheet(pid, size))
-        if what not in ("color", "filament", "regions", "clay", "model", "compare"):
-            raise NikiasError("invalid", "what: color, filament, regions, clay, model, compare o sources.")
+        if what not in ("color", "regions", "clay", "model", "compare"):
+            raise NikiasError("invalid", "what: color, regions, clay, model, compare o sources.")
         names = views or [view]
         for v in names:
             if v not in render.VIEWS and (yaw is None):
@@ -754,8 +754,7 @@ class Services:
             out_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             raise NikiasError("failed", f"No puedo crear {out_dir}: {exc}") from None
-        entries = [{"hex": (c.get("filament") or {}).get("hex") or c["hex"], "name": _name_of(c),
-                    "material": (c.get("filament") or {}).get("material") or "PLA"} for c in project["palette"]]
+        entries = [{"hex": c["hex"], "name": _name_of(c), "material": "PLA"} for c in project["palette"]]
         unset = int((fig.labels == UNSET).sum())
         files: list[str] = []
 
@@ -797,14 +796,13 @@ class Services:
         legend = out_dir / f"{src.stem} colores.txt"
         lines = [f"{project['name']}", ""]
         for k, c in enumerate(project["palette"]):
-            spool = c.get("filament") or {}
-            lines.append(f"Filamento {k + 1}: {_name_of(c)} {c['hex']}" + (f"  ->  {spool.get('name')} {spool.get('material', '')} {spool.get('hex')}" if spool else ""))
+            lines.append(f"Color {k + 1}: {_name_of(c)} {c['hex']}")
         legend.write_text("\n".join(lines) + "\n", encoding="utf-8")
         files.append(str(legend))
         project["exports"] = [{"when": time.time(), "folder": str(out_dir), "files": [Path(f).name for f in files]}] + project.get("exports", [])[:4]
         self.store.save(project)
         return {"folder": str(out_dir), "files": files, "variants": done_variants, "variants_failed": failed, "uncolored_faces": unset,
-                "note": "Las caras sin colorear salen con el filamento 1." if unset else ""}
+                "note": "Las caras sin colorear salen con el color 1." if unset else ""}
 
     @staticmethod
     def _fill_unset(labels: np.ndarray, mesh: meshes.Mesh) -> np.ndarray:

@@ -24,7 +24,7 @@
       <button class="btn small" id="job-cancel" type="button">Cancelar</button>
     </div>
     <button class="btn small" id="btn-skills" title="Procedimientos de la biblioteca de skills que reciben los agentes que se conectan a esta app">Skills</button>
-    <button class="btn small" id="btn-settings" title="Carpetas, colores por figura, filamentos y formatos de exportación">Ajustes</button>
+    <button class="btn small" id="btn-settings" title="Carpetas, colores por figura y formatos de exportación">Ajustes</button>
   </header>
 
   <main class="layout">
@@ -50,7 +50,6 @@
       <div class="viewbar">
         <div class="seg" id="view-seg" role="group" aria-label="Qué se ve">
           <button data-what="color" class="active" title="Los colores de la paleta">Color</button>
-          <button data-what="filament" title="Los colores de los filamentos con los que se imprimirá">Filamento</button>
           <button data-what="regions" title="Las regiones en las que está cortada la figura">Regiones</button>
           <button data-what="clay" title="La figura sin color">Arcilla</button>
         </div>
@@ -60,7 +59,7 @@
           <button data-tool="patch" title="Clic: pinta la mancha de un solo color que tocas">Mancha</button>
           <button data-tool="brush" title="Arrastra: pinta bajo el cursor">Pincel</button>
         </div>
-        <label class="tools" id="brush-box" hidden><span class="viewinfo">Pincel</span><input type="range" id="brush-size" min="0.3" max="12" step="0.1" value="2"><span class="viewinfo" id="brush-mm">2 mm</span></label>
+        <label class="tools" id="brush-box" hidden><span class="viewinfo">Pincel</span><input type="range" id="brush-size" min="0.3" max="12" step="0.1" value="2" title="Tamaño del pincel, en % del tamaño de la figura"><span class="viewinfo" id="brush-mm">2 %</span></label>
         <button class="btn small" id="btn-undo" disabled title="Deshacer el último cambio de color">Deshacer</button>
         <span class="viewinfo" id="view-info"></span>
         <span class="spacer"></span>
@@ -72,7 +71,7 @@
       <div class="viewport" id="viewport">
         <div class="empty" id="empty">
           <h1>Elige una figura de la biblioteca</h1>
-          <p>Nikias reparte unos pocos colores de filamento por la figura a partir de un modelo con texturas, de imágenes de referencia o de lo que decida el modelo de visión, y la deja en un 3MF que el laminador abre ya pintado.</p>
+          <p>Nikias reparte unos pocos colores por la figura a partir de un modelo con texturas, de imágenes de referencia o de lo que decida el modelo de visión, y la deja en un 3MF que el laminador abre ya pintado.</p>
         </div>
         <div class="loading" id="loading" hidden>Cargando la figura…</div>
       </div>
@@ -86,7 +85,6 @@
         <div class="palbar">
           <button class="btn small" id="pal-add" title="Añadir un color a la paleta">Añadir color</button>
           <label class="tools"><span class="viewinfo">Colores</span><input type="number" id="pal-n" class="input" min="1" max="16" step="1" title="Deja la paleta en este número de colores"></label>
-          <button class="btn small" id="pal-snap" title="Cambia cada color por el del filamento más parecido de tu estantería">Ajustar a filamentos</button>
         </div>
       </section>
       <section class="card">
@@ -94,6 +92,7 @@
         <div id="ref-list" class="refs"></div>
         <div class="drop" id="ref-drop">Suelta o pega aquí imágenes de referencia</div>
         <div class="palbar">
+          <button class="btn small" id="ref-web" title="Busca en internet una imagen del personaje por el nombre de la figura y su colección">Buscar imagen del personaje</button>
           <button class="btn small" id="ref-find" title="Busca en tus carpetas de referencias modelos e imágenes con el nombre de la figura">Buscar por nombre</button>
           <button class="btn small" id="ref-path" title="Añade un modelo con texturas, una imagen o una carpeta por su ruta">Añadir por ruta</button>
           <button class="btn small" id="ref-file">Subir imagen</button>

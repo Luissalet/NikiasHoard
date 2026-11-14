@@ -53,7 +53,7 @@ def client(tmp_path):
     write_reference_obj(refs / "Amy model")
     Image.new("RGB", (80, 60), (200, 30, 35)).save(refs / "amy art.png")
     svc = Services(Config(data_dir=tmp_path / "data", background=False))
-    svc.settings.update({"library_dirs": [str(tmp_path / "lib")], "photo_dirs": [str(photos)], "reference_dirs": [str(refs)]})
+    svc.settings.update({"library_dirs": [str(tmp_path / "lib")], "photo_dirs": [str(photos)], "reference_dirs": [str(refs)], "web_references": False})
     with TestClient(create_app(services=svc), base_url="http://127.0.0.1") as c:
         c.svc, c.lib, c.refs = svc, lib, refs
         yield c
@@ -76,7 +76,7 @@ def test_health_and_catalogue(client):
     tools = client.get("/api/agent/tools").json()
     names = {t["name"] for t in tools["tools"]}
     assert {"library_scan", "project_create", "source_add", "color_start", "palette_set", "paint", "figure_look", "result_export"} <= names
-    assert "multi-material" in tools["instructions"]
+    assert "multi-colour" in tools["instructions"]
     assert client.post("/api/agent/call", json={"name": "status"}).status_code in (401, 403)
     r = client.post("/api/agent/call", json={"name": "status", "arguments": {}}, headers={"Authorization": f"Bearer {client.svc.token}"})
     assert r.status_code == 200 and "formats" in r.text
@@ -125,7 +125,6 @@ def test_colour_from_a_textured_model(client):
     assert job["result"]["method"] == "model" and job["result"]["suggested_colors"] == 3
     p = call(client, "project_get", project_id=pid)
     assert [c["name"] for c in p["palette"]] == ["rojo", "amarillo", "azul"]
-    assert p["palette"][2]["filament"]["name"] == "Azul"
     assert p["colored_share"] == 1 and [c["patches"] for c in p["colors"]] == [1, 1, 1]
     assert 0.5 < p["colors"][0]["share"] < 0.65
     rows = call(client, "regions_set", project_id=pid)["regions"]
@@ -150,10 +149,10 @@ def test_colour_directed_by_the_vision_model(client):
     assert r.status_code == 200 and r.json()["kind"] == "image"
     ask, asked = fake_model([
         {"character": "Amy Rose", "palette": [{"name": "rosa", "hex": "#f08cb4", "where": "body"}, {"name": "rojo", "hex": "#c81e23", "where": "dress"},
-                                               {"name": "blanco", "hex": "nonsense"}, {"name": "carne", "hex": "#f0c3a5", "where": "face"}]},
-        {"parts": {"0": {"is": "dress and boots", "color": 1, "mixed": True}, "1": {"is": "chest", "color": 0}, "2": {"is": "head", "color": 2},
+                                               {"name": "blanco", "hex": "nonsense"}, {"name": "carne", "hex": "#f0c3a5", "where": "face"}],
+         "parts": [{"part": "dress", "color": 1}, {"part": "face", "color": 2}, {"part": "wings", "color": 9}, {"part": "", "color": 0}]},
+        {"parts": {"0": {"is": "dress and boots", "color": 1, "mixed": True}, "1": {"is": "chest", "color": 0}, "2": {"is": "head", "row": 1, "color": 0},      # the row it names decides, not the colour written next to it
                    "9": {"is": "nothing", "color": 0}}, "notes": "clear"},
-        {"parts": {"0": {"is": "lower dress", "color": 1}}},                    # the close-up of the part it found mixed
         {"ok": False, "changes": {"2": 0, "1": 2}, "palette": [{"index": 1, "hex": "#d01020"}], "comment": "the head is pink"},
         {"ok": True, "changes": {}, "comment": "matches"},
     ])
@@ -169,9 +168,11 @@ def test_colour_directed_by_the_vision_model(client):
     assert [r["color"] for r in rows] == [1, 2, 0]                             # the review moved the head to pink and the chest to skin
     steps = [e["step"] for e in p["director"]["log"]]
     assert steps[:3] == ["palette", "assign", "split"] and steps.count("review") == 2
-    assert p["director"]["log"][2]["region"] == 0 and "dress and boots" in asked[2]["user"]
+    assert p["director"]["log"][2]["region"] == 0 and "pincel" in p["director"]["log"][2]["result"]      # nothing finer to cut it by
     assert "botas rojas" in asked[0]["user"] and asked[0]["images"] == 2 and asked[1]["images"] == 3
-    assert "0, 1, 2" in asked[1]["user"] and "2: head -> carne (2)" in asked[3]["user"]
+    assert p["director"]["log"][0]["chart"] == [{"part": "dress", "color": 1}, {"part": "face", "color": 2}] and "1: face -> 2 (carne)" in asked[1]["user"]
+    assert asked[2]["images"] == 3                                             # the review sees the references, the colouring and the numbered colouring
+    assert "0, 1, 2" in asked[1]["user"] and "2: head -> carne (2)" in asked[2]["user"]
     assert p["director"]["log"][1]["parts"] == {"0": "dress and boots", "1": "chest", "2": "head"}
     assert p["director"]["model"] == "stand-in"
 
@@ -218,14 +219,11 @@ def test_palette_and_paint_by_hand(client):
     assert client.get(f"/api/projects/{pid}/pick", params={"face": face}).json() == {"region": 2, "color": 2}
     assert call(client, "paint", project_id=pid, color=0, faces=[face])["changed_faces"] == brush["changed_faces"]     # bucket fill of that patch
     assert call(client, "paint_undo", project_id=pid)["can_undo"] == 3
-    assert call(client, "clean", project_id=pid, min_detail_mm=6.0)["islands_removed"] == 1                             # the brush spot is under 36 mm²
+    assert call(client, "clean", project_id=pid, min_patch=100 * 6.0 / client.svc._figure(pid).mesh.diagonal)["islands_removed"] == 1                             # the brush spot is under 36 mm²
     merged = call(client, "palette_set", project_id=pid, merge=[0, 2])
     assert len(merged["palette"]) == 2 and merged["colors"][1]["share"] > 0.2
     based = call(client, "palette_set", project_id=pid, base=1)
     assert based["palette"][0]["name"] == "rojo vivo" and based["colors"][0]["share"] < 0.4
-    snapped = call(client, "palette_set", project_id=pid, snap=True, colors=[None, {"filament": "Negro"}])
-    assert snapped["palette"][1]["filament"]["name"] == "Negro" and snapped["palette"][0]["hex"] == "#c12e1f"
-    assert fails(client, "palette_set", project_id=pid, colors=[{"filament": "No existe"}])["code"] == "invalid"
     finer = call(client, "regions_set", project_id=pid, detail=5)
     assert finer["detail"] == 5 and len(finer["regions"]) >= 3
     assert call(client, "project_get", project_id=pid)["colored_share"] == 1    # recutting keeps the paint
@@ -265,7 +263,7 @@ def test_export_writes_the_figure_and_its_variants(client):
     call(client, "paint", project_id=pid, color=1, regions=[2])
     out = call(client, "result_export", project_id=pid)
     names = sorted(f.replace("\\", "/").rsplit("/", 1)[-1] for f in out["files"])
-    assert out["folder"].replace("\\", "/").endswith("Sonic/Multicolor") and out["uncolored_faces"] > 0 and "filamento 1" in out["note"]
+    assert out["folder"].replace("\\", "/").endswith("Sonic/Multicolor") and out["uncolored_faces"] > 0 and "color 1" in out["note"]
     assert names == sorted([f"{stem} {kind}.3mf" for stem in ("Amy", "Amy flat", "Amy pivot") for kind in ("Bambu-Orca", "Prusa", "color")] + ["Amy colores.txt"])
     assert [v["name"] for v in out["variants"]] == ["flat", "pivot"]
     assert all(v["fit"] < 0.005 and v["new_faces_share"] < 0.01 for v in out["variants"])
@@ -274,7 +272,7 @@ def test_export_writes_the_figure_and_its_variants(client):
     region2 = int((np.frombuffer(client.get(f"/api/projects/{pid}/faces/regions.bin").content, "<u2") == 2).sum())
     assert abs(xml.count('paint_color="8"') - region2) < 0.02 * region2        # laid back over the figure before taking its colours
     legend = (client.lib / "Multicolor" / "Amy colores.txt").read_text(encoding="utf-8")
-    assert "Filamento 1: rojo #c12e1f" in legend and "Filamento 2: azul" in legend
+    assert "Color 1: rojo #c12e1f" in legend and "Color 2: azul" in legend
     assert call(client, "library_scan", refresh=True)["count"] == 2                 # the Multicolor folder is not read as figures
     one = call(client, "result_export", project_id=pid, formats=["obj", "stl"], folder=str(client.lib.parent / "out"), variants=False)
     assert len(one["files"]) == 2 + 2 + 1
@@ -283,8 +281,8 @@ def test_export_writes_the_figure_and_its_variants(client):
 
 
 def test_settings_and_delete(client):
-    s = call(client, "settings_set", changes={"colors": 3, "filaments": [{"name": "Rojo Bambu", "hex": "#C12E1F", "material": "PLA Basic"}]})
-    assert s["colors"] == 3 and s["filaments"] == [{"name": "Rojo Bambu", "hex": "#c12e1f", "material": "PLA Basic"}]
+    s = call(client, "settings_set", changes={"colors": 3, "min_patch": 2, "wikis": {"Sonic": "sonic.fandom.com"}})
+    assert s["colors"] == 3 and s["min_patch"] == 2 and s["wikis"] == {"sonic": "sonic.fandom.com"} and "filaments" not in s
     assert fails(client, "settings_set", changes={"export_formats": ["gcode"]})["code"] == "invalid"
     assert fails(client, "settings_set", changes={"nope": 1})["code"] == "invalid"
     pid = open_amy(client)["id"]
@@ -293,3 +291,46 @@ def test_settings_and_delete(client):
     assert call(client, "project_delete", project_id=pid) == {"deleted": pid}
     assert call(client, "project_list")["projects"] == []
     assert (client.lib / "Amy.stl").is_file()
+
+
+def test_a_figure_without_references_gets_the_character_looked_up(client, monkeypatch):
+    import io
+
+    from PIL import Image
+
+    from nikias_hoard import references
+    pid = open_amy(client)["id"]
+    buf = io.BytesIO()
+    Image.new("RGB", (90, 120), (240, 140, 180)).save(buf, "PNG")
+    asked = []
+    monkeypatch.setattr(references, "find", lambda name, group, wikis=None: asked.append((name, group)) or
+                        {"data": buf.getvalue(), "title": "Amy Rose", "page": "https://wiki.example/Amy_Rose", "image": "x"})
+    got = call(client, "source_fetch", project_id=pid)
+    assert got["kind"] == "image" and got["name"] == "Amy Rose" and got["web"] and got["path"] == "https://wiki.example/Amy_Rose" and asked == [("Amy", "Sonic")]
+    assert client.get(f"/api/projects/{pid}/sources/{got['id']}.png").status_code == 200
+    call(client, "source_remove", project_id=pid, source_id=got["id"])
+    client.svc.settings.update({"web_references": True})                        # and the model's colouring fetches it by itself
+    ask, asked_model = fake_model([
+        {"character": "Amy Rose", "palette": [{"name": "rosa", "hex": "#f08cb4"}, {"name": "rojo", "hex": "#c81e23"}]},
+        {"parts": {"0": {"is": "dress", "color": 1}, "1": {"is": "body", "color": 0}, "2": {"is": "head", "color": 0}}},
+        {"ok": True},
+    ])
+    client.svc.llm.ask = ask
+    client.svc.llm.status = lambda: {"available": True, "model": "stand-in"}
+    assert call(client, "color_start", project_id=pid, mode="ai", colors=2, rounds=1)["state"] == "done"
+    p = call(client, "project_get", project_id=pid)
+    assert p["director"]["log"][0] == {"step": "reference", "name": "Amy Rose", "page": "https://wiki.example/Amy_Rose"}
+    assert [s_["name"] for s_ in p["sources"]] == ["Amy Rose"] and asked_model[0]["images"] == 2      # the reference went to the model
+    monkeypatch.setattr(references, "find", lambda name, group, wikis=None: None)
+    assert fails(client, "source_fetch", project_id=pid, query="Nadie")["code"] == "not_found"
+
+
+def test_the_smallest_patch_is_a_share_of_the_figure_whatever_its_size(client):
+    pid = open_amy(client)["id"]
+    fig = client.svc._figure(pid)
+    call(client, "palette_set", project_id=pid, colors=[{"hex": "#f5f5f5"}, {"hex": "#161616"}])
+    call(client, "paint", project_id=pid, color=0, everything=True)
+    call(client, "paint", project_id=pid, color=1, brush={"points": [[0, -6, 43]], "radius_mm": 2.5, "normals": [[0, -1, 0]]})
+    spot = float(fig.mesh.areas[fig.labels == 1].sum()) ** 0.5 / fig.mesh.diagonal * 100       # the spot's side, in % of the figure
+    assert call(client, "clean", project_id=pid, min_patch=spot * 0.5, smooth=0)["islands_removed"] == 0
+    assert call(client, "clean", project_id=pid, min_patch=spot * 1.5, smooth=0)["islands_removed"] == 1

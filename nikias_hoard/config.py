@@ -16,31 +16,17 @@ from .hoard_link.guard import parse_allowed_hosts
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# The spools on the shelf: what a palette colour can be matched to. Plain colours every brand sells; edit them in Ajustes.
-DEFAULT_FILAMENTS = [
-    {"name": "Blanco", "hex": "#f5f5f5", "material": "PLA"}, {"name": "Negro", "hex": "#161616", "material": "PLA"},
-    {"name": "Gris", "hex": "#8e9089", "material": "PLA"}, {"name": "Plata", "hex": "#a6a9aa", "material": "PLA"},
-    {"name": "Rojo", "hex": "#c12e1f", "material": "PLA"}, {"name": "Naranja", "hex": "#ff6a13", "material": "PLA"},
-    {"name": "Amarillo", "hex": "#f4ee2a", "material": "PLA"}, {"name": "Dorado", "hex": "#e4bd68", "material": "PLA"},
-    {"name": "Verde", "hex": "#00ae42", "material": "PLA"}, {"name": "Verde claro", "hex": "#becf00", "material": "PLA"},
-    {"name": "Turquesa", "hex": "#00b1b7", "material": "PLA"}, {"name": "Azul claro", "hex": "#56b7e6", "material": "PLA"},
-    {"name": "Azul", "hex": "#1f5fc4", "material": "PLA"}, {"name": "Azul marino", "hex": "#0a2989", "material": "PLA"}, {"name": "Morado", "hex": "#5e43b7", "material": "PLA"},
-    {"name": "Rosa", "hex": "#f55a74", "material": "PLA"}, {"name": "Magenta", "hex": "#ec008c", "material": "PLA"},
-    {"name": "Marrón", "hex": "#9d432c", "material": "PLA"}, {"name": "Beige", "hex": "#f7e6de", "material": "PLA"},
-    {"name": "Carne", "hex": "#f1c6a5", "material": "PLA"}, {"name": "Crema", "hex": "#f2e3b5", "material": "PLA"},
-]
-
 DEFAULT_SETTINGS: dict[str, Any] = {
     "library_dirs": [],          # folders with finished print figures (STL)
     "reference_dirs": [],        # folders where textured models and pictures of the characters are looked for by name
     "photo_dirs": [],            # folders with a picture per figure (same file name), shown in the library
     "variant_suffixes": ["flat", "pivot"],   # "<name> <suffix>.stl" is the same figure cut another way: it takes the same colours
     "part_suffixes": ["base"],   # "<name> <suffix>.stl" is a separate piece listed with its figure
-    "colors": 4,                 # print colours of a new figure (what a four-spool changer loads)
+    "colors": 4,                 # colours of a new figure
     "accent": 0.6,               # 1 = colours chosen by area alone; lower lets small distinct colours (eyes) keep their own
-    "detail": 3,                 # 1-5: how finely a figure is cut into regions
-    "max_regions": 60,
-    "min_detail_mm": 0.8,        # a patch of colour narrower than this cannot be printed: it joins its surroundings
+    "detail": 4,                 # 1-5: how finely a figure is cut into regions
+    "max_regions": 150,
+    "min_patch": 1.2,            # a patch of colour narrower than this joins its surroundings; in % of the figure's size
     "smooth": 2,                 # passes that straighten colour borders
     "fit_good": 0.012,           # a textured model whose typical gap to the figure is under this share of its size is trusted
     "samples": 700_000,          # coloured points taken from a textured model
@@ -48,10 +34,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "llm_url": "",               # empty: the family's vision model through Hoard Link; else an OpenAI-compatible URL
     "llm_model": "",
     "llm_timeout_s": 1800,       # per question to the model
+    "web_references": True,      # a figure with no reference of its own gets a picture of the character looked up by name
+    "wikis": {},                 # words of a collection's name -> the wiki where its characters are looked up (adds to the built-in ones)
     "director_rounds": 2,        # times the model may look at its colouring and correct it
     "export_dir": "",            # empty: a "Multicolor" folder next to each figure
     "export_formats": ["bambu", "prusa", "color"],
-    "filaments": DEFAULT_FILAMENTS,
 }
 FORMATS = ("bambu", "prusa", "color", "obj", "stl")
 
@@ -166,7 +153,10 @@ def normalize(data: dict[str, Any]) -> dict[str, Any]:
     data["accent"] = _clamp(data["accent"], 0.2, 1.0)
     data["detail"] = _clamp(data["detail"], 1, 5, int)
     data["max_regions"] = _clamp(data["max_regions"], 4, 250, int)
-    data["min_detail_mm"] = _clamp(data["min_detail_mm"], 0, 20)
+    data["min_patch"] = _clamp(data["min_patch"], 0, 20)
+    data["web_references"] = bool(data.get("web_references", True))
+    wikis = data.get("wikis") if isinstance(data.get("wikis"), dict) else {}
+    data["wikis"] = {str(k).strip().lower()[:60]: str(v).strip()[:120] for k, v in wikis.items() if str(k).strip() and str(v).strip()}
     data["smooth"] = _clamp(data["smooth"], 0, 12, int)
     data["fit_good"] = _clamp(data["fit_good"], 0.001, 0.2)
     data["samples"] = _clamp(data["samples"], 20_000, 4_000_000, int)
@@ -184,10 +174,6 @@ def normalize(data: dict[str, Any]) -> dict[str, Any]:
     if bad:
         raise ValueError(f"export_formats: unknown {bad[0]} (use {', '.join(FORMATS)})")
     data["export_formats"] = list(dict.fromkeys(formats)) or ["bambu"]
-    spools = []
-    for f in data.get("filaments") or []:
-        if not isinstance(f, dict) or not str(f.get("name") or "").strip():
-            raise ValueError("each filament needs a name and a colour")
-        spools.append({"name": str(f["name"]).strip()[:60], "hex": _hex(f.get("hex")), "material": str(f.get("material") or "PLA").strip()[:20]})
-    data["filaments"] = spools[:200]
+    data.pop("filaments", None)                            # from earlier versions: colours are not matched to spools any more
+    data.pop("min_detail_mm", None)
     return data

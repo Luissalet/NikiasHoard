@@ -80,8 +80,6 @@ def test_palette_reduction_keeps_a_small_distinct_colour():
     assert pal.name_of(colors[0]) == "rojo"                                # biggest first
     assert pal.suggest_count(rgb, np.ones(len(rgb)))["count"] == 3
     assert pal.to_hex(pal.from_hex("#Abc")) == "#aabbcc"
-    spool = pal.nearest_filament((30, 90, 200), [{"name": "Rojo", "hex": "#c12e1f"}, {"name": "Azul", "hex": "#1f5fc4"}])
-    assert spool["name"] == "Azul" and spool["delta"] < 10
 
 
 def test_lab_round_trip():
@@ -191,3 +189,14 @@ def test_obj_and_colour_stls(tmp_path, figure):
     parts = export.write_color_stls(tmp_path, "f", figure.P, figure.F, labels, palette)
     assert [p.name for p in parts] == ["f 1 rojo.stl", "f 2 amarillo.stl", "f 3 azul.stl"]
     assert sum(len(meshes.load_stl(p).F) for p in parts) == len(figure.F)
+
+
+def test_an_outline_left_open_still_separates_and_the_cut_ignores_scale():
+    plate = shapes.engraved_plate()
+    cut = reg.segment(plate, 4)
+    share = np.bincount(cut, plate.areas) / plate.areas.sum()
+    assert len(share) == 2 and abs(share[1] - np.pi * 100 / 1600) < 0.02          # the engraved circle is a region although its line has a gap
+    inside = np.hypot(*plate.centroids[:, :2].T) < 9.0
+    assert (cut[inside] == 1).all()
+    assert reg.segment(plate, 3).max() == 0                                         # a coarser cut closes narrower gaps only
+    assert (reg.segment(meshes.Mesh(plate.P * 25.0, plate.F), 4) == cut).all()      # the same figure 25 times larger cuts the same

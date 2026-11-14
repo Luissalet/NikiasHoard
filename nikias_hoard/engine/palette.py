@@ -150,14 +150,3 @@ def suggest_count(rgb: np.ndarray, weight: np.ndarray, lo: int = 2, hi: int = 8,
             break
     return {"count": best, "errors": errs, "left_out_share": left}
 
-
-def nearest_filament(rgb, filaments: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
-    best, best_d = None, 1e9
-    for f in filaments:
-        try:
-            d = distance(rgb, from_hex(f.get("hex", "")))
-        except ValueError:
-            continue
-        if d < best_d:
-            best, best_d = f, d
-    return dict(best, delta=round(best_d, 1)) if best else None

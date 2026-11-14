@@ -61,3 +61,16 @@ def textured(rows: int = 60, cols: int = 40, turn=None, scale: float = 1.0, shif
     P = P * scale + np.asarray(shift, float)
     mats = [SimpleNamespace(name=f"m{k}", albedo=None, color=tuple(int(x) for x in COLORS[k])) for k in range(3)]
     return SimpleNamespace(P=P, F=F, UV=np.zeros((len(F), 3, 2), np.float32), M=M, materials=mats, name="model")
+
+
+def engraved_plate(n: int = 240, gap_deg: float = 3.0) -> Mesh:
+    """A square plate with a circle engraved on it whose line is left open over ``gap_deg`` degrees, as hand-drawn outlines are."""
+    x = np.linspace(-20.0, 20.0, n)
+    X, Y = np.meshgrid(x, x, indexing="ij")
+    r, a = np.hypot(X, Y), np.degrees(np.arctan2(Y, X))
+    groove = np.exp(-((r - 10.0) / 0.35) ** 2) * (np.abs(a) > gap_deg / 2)
+    P = np.stack([X, Y, -0.6 * groove], -1).reshape(-1, 3)
+    i, j = np.meshgrid(np.arange(n - 1), np.arange(n - 1), indexing="ij")
+    p = (i * n + j).ravel()
+    F = np.concatenate([np.stack([p, p + n, p + 1], 1), np.stack([p + 1, p + n, p + n + 1], 1)]).astype(np.int32)
+    return Mesh(P, F)

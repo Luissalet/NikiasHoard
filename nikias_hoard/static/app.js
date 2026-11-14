@@ -161,7 +161,7 @@ function repaint() {
   if (state.what === 'regions') { view.paint(state.regions, regionTable(p.regions || 1), clay); return; }
   const t = new Float32Array(p.palette.length * 3);
   p.palette.forEach((c, k) => {
-    const rgb = hexRgb(state.what === 'filament' && c.filament ? c.filament.hex : c.hex);
+    const rgb = hexRgb(c.hex);
     t[3 * k] = lin(rgb[0]); t[3 * k + 1] = lin(rgb[1]); t[3 * k + 2] = lin(rgb[2]);
   });
   view.paint(state.labels, t, unset);
@@ -287,7 +287,7 @@ function drawResult() {
   const p = state.project, bar = $('resultbar');
   if (!p) { bar.replaceChildren(); return; }
   const m = p.mesh;
-  const bits = [el('span', {}, el('b', { text: nf.format(m.faces) }), ' triángulos'), el('span', {}, el('b', { text: m.size_mm.map((v) => v.toFixed(0)).join(' × ') }), ' mm')];
+  const bits = [el('span', {}, el('b', { text: nf.format(m.faces) }), ' triángulos'), el('span', {}, 'proporción ', el('b', { text: m.size_mm.map((v) => (v / Math.max(...m.size_mm)).toFixed(2)).join(' × ') }))];
   if (m.open_edges) bits.push(el('span', { class: 'warn', text: `${nf.format(m.open_edges)} bordes abiertos` }));
   if (p.palette.length) {
     bits.push(el('span', { class: p.colored_share >= 0.999 ? 'ok' : 'warn', text: p.colored_share >= 0.999 ? 'Toda la figura tiene color' : `${(100 * (1 - p.colored_share)).toFixed(1)} % sin colorear` }));
@@ -318,10 +318,9 @@ function drawPalette() {
     return el('div', { class: `swatch${k === state.color ? ' active' : ''}`, onclick: (ev) => { if (ev.target.tagName !== 'INPUT' && ev.target.tagName !== 'BUTTON') { state.color = k; drawPalette(); } } },
       el('span', { class: 'num', title: 'Color activo para pintar', text: String(k + 1) }),
       el('input', { type: 'color', value: c.hex, 'aria-label': `Color ${k + 1}`, onchange: (ev) => savePalette(k, { hex: ev.target.value }) }),
-      el('span', { class: 'sname' }, name, el('span', { class: 'spool', title: c.filament ? `Filamento más parecido (diferencia ${c.filament.delta})` : '' },
-        c.filament ? [el('i', { style: `background:${c.filament.hex}` }), `${c.filament.name} ${c.filament.material || ''}`] : 'sin filamento')),
+      el('span', { class: 'sname' }, name, c.where ? el('span', { class: 'spool', title: c.where, text: c.where }) : null),
       el('span', { class: 'share', text: `${(100 * st.share).toFixed(1)} %` }),
-      el('button', { class: 'btn small more', type: 'button', title: 'Filamento, fundir con otro color o hacerlo el de la pieza', onclick: () => colorMenu(k) }, '⋯'));
+      el('button', { class: 'btn small more', type: 'button', title: 'Fundir con otro color o hacerlo el de la pieza', onclick: () => colorMenu(k) }, '⋯'));
   }));
 }
 
@@ -332,25 +331,18 @@ async function savePalette(k, change) {
 
 async function colorMenu(k) {
   const p = state.project, c = p.palette[k];
-  const spools = state.settings.filaments;
-  const spool = el('select', { class: 'input', name: 'spool' }, el('option', { value: '' }, 'El más parecido'),
-    ...spools.map((f) => el('option', { value: f.name, selected: c.filament && c.filament.name === f.name && c.filament_chosen }, `${f.name} · ${f.material}`)));
   const others = p.palette.map((o, i) => ({ o, i })).filter((x) => x.i !== k);
   const into = el('select', { class: 'input', name: 'into' }, el('option', { value: '' }, 'No fundir'), ...others.map((x) => el('option', { value: String(x.i) }, `${x.i + 1} · ${x.o.name}`)));
   const base = el('input', { type: 'checkbox', name: 'base', disabled: k === 0, checked: k === 0 });
   const r = await modal({ title: `Color ${k + 1} · ${c.name}`, body: el('div', { class: 'menu' },
-    el('label', { class: 'field' }, el('span', { text: 'Filamento' }), spool),
     el('label', { class: 'field' }, el('span', { text: 'Fundir con (este desaparece)' }), into),
-    el('label', { class: 'check' }, base, el('span', { text: 'Es el color de la pieza (filamento 1)' }))),
+    el('label', { class: 'check' }, base, el('span', { text: 'Es el color de la pieza (color 1)' }))),
   buttons: [{ label: 'Cancelar', value: null }, { label: 'Aplicar', value: 'ok', kind: 'primary' }] });
   if (!r) return;
   try {
     let out = null;
     if (into.value !== '') out = await call('palette_set', { project_id: p.id, merge: [Number(into.value), k] });
-    else {
-      if (spool.value) out = await call('palette_set', { project_id: p.id, colors: p.palette.map((_, i) => (i === k ? { filament: spool.value } : null)) });
-      if (base.checked && k !== 0) out = await call('palette_set', { project_id: p.id, base: k });
-    }
+    else if (base.checked && k !== 0) out = await call('palette_set', { project_id: p.id, base: k });
     if (out) { state.project = out; await loadFaces('labels'); await setProject(out); }
   } catch (err) { fail(err); }
 }
@@ -453,7 +445,7 @@ async function startColor(mode) {
   const count = el('input', { type: 'number', class: 'input', min: '2', max: '16', step: '1', value: String(p.palette.length || state.settings.colors) });
   const wish = el('textarea', { class: 'input', rows: '2', maxlength: '500', placeholder: 'Opcional: «botas rojas», «sin blanco, no tengo»…' });
   const body = [el('label', { class: 'field' }, el('span', { text: 'Colores de impresión' }), count)];
-  if (mode === 'ai') body.push(el('label', { class: 'field wide' }, el('span', { text: p.sources.length ? 'Qué quieres del coloreado' : 'Sin referencias: el modelo tirará de lo que sepa del personaje. Qué quieres del coloreado' }), wish));
+  if (mode === 'ai') body.push(el('label', { class: 'field wide' }, el('span', { text: p.sources.length ? 'Qué quieres del coloreado' : 'Sin referencias: se buscará una imagen del personaje antes de colorear. Qué quieres del coloreado' }), wish));
   else if (!p.sources.some((s) => s.kind === 'model' && s.good)) body.push(el('p', { text: 'Ningún modelo de las referencias encaja con la figura: lo coloreará el modelo de visión a partir de ellas.' }));
   if (p.palette.length) body.push(el('p', { text: 'Sustituye el coloreado actual (Deshacer lo recupera).' }));
   const r = await modal({ title: mode === 'ai' ? 'Colorear con IA' : 'Colorear', body, buttons: [{ label: 'Cancelar', value: null }, { label: 'Colorear', value: 'ok', kind: 'primary' }] });
@@ -551,7 +543,7 @@ async function endStroke() {
   stroke = null;
   try {
     for (let i = 0; i < s.points.length; i += 300) {
-      await call('paint', { project_id: state.project.id, color: s.color, brush: { points: s.points.slice(i, i + 300), normals: s.normals.slice(i, i + 300), radius_mm: Number($('brush-size').value) } });
+      await call('paint', { project_id: state.project.id, color: s.color, brush: { points: s.points.slice(i, i + 300), normals: s.normals.slice(i, i + 300), radius_mm: Number($('brush-size').value) / 100 * figureSize() } });
     }
     await refreshProject('labels');
   } catch (err) { fail(err); await refreshProject('labels'); }
@@ -560,20 +552,22 @@ view.canvas.addEventListener('pointerup', endStroke);
 view.canvas.addEventListener('pointercancel', endStroke);
 view.canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
+const SPARE = ['#f5f5f5', '#161616', '#c12e1f', '#f4ee2a', '#1f5fc4', '#00ae42', '#ff6a13', '#f1c6a5', '#8e9089', '#5e43b7', '#9d432c', '#f55a74'];
+// the figure's size (its diagonal, in its own units): what the brush and the smallest patch are a share of
+function figureSize() { const m = state.project && state.project.mesh; return m ? Math.hypot(...m.size_mm) : 1; }
+
 // ------------------------------------------------------------------ settings
 async function openSettings() {
   const s = state.settings = await call('settings_get');
   const area = (value, rows = 2) => el('textarea', { class: 'input', rows: String(rows) }, value.join('\n'));
   const lib = area(s.library_dirs), refs = area(s.reference_dirs), photos = area(s.photo_dirs);
   const colors = el('input', { type: 'number', class: 'input', min: '2', max: '16', value: String(s.colors) });
-  const detail = el('input', { type: 'number', class: 'input', min: '0', max: '20', step: '0.1', value: String(s.min_detail_mm) });
+  const detail = el('input', { type: 'number', class: 'input', min: '0', max: '20', step: '0.1', value: String(s.min_patch) });
   const rounds = el('input', { type: 'number', class: 'input', min: '0', max: '6', value: String(s.director_rounds) });
   const out = el('input', { type: 'text', class: 'input', value: s.export_dir, placeholder: 'Vacío: carpeta «Multicolor» junto a cada figura' });
   const url = el('input', { type: 'text', class: 'input', value: s.llm_url, placeholder: 'Vacío: el modelo de visión de la familia' });
   const model = el('input', { type: 'text', class: 'input', value: s.llm_model, placeholder: 'Modelo (si el servidor lo pide)' });
-  const spoolRow = (f) => { const row = el('div', { class: 'srow' }, el('input', { type: 'color', value: f.hex }), el('input', { type: 'text', class: 'input', value: f.name, maxlength: '60', placeholder: 'Nombre' }),
-    el('input', { type: 'text', class: 'input', value: f.material, maxlength: '20', placeholder: 'Material' }), el('button', { class: 'btn small', type: 'button', title: 'Quitar', onclick: () => row.remove() }, '×')); return row; };
-  const spools = el('div', { class: 'spools' }, s.filaments.map(spoolRow));
+  const web = el('input', { type: 'checkbox', checked: s.web_references });
   const lines = (t) => t.value.split('\n').map((v) => v.trim()).filter(Boolean);
   const st = state.status || {};
   const r = await modal({ title: 'Ajustes', wide: true, body: [
@@ -581,19 +575,17 @@ async function openSettings() {
     el('label', { class: 'field wide' }, el('span', { text: 'Carpetas donde buscar modelos con texturas e imágenes de referencia' }), refs),
     el('label', { class: 'field wide' }, el('span', { text: 'Carpetas con una foto por figura (mismo nombre)' }), photos),
     el('label', { class: 'field' }, el('span', { text: 'Colores por figura' }), colors),
-    el('label', { class: 'field' }, el('span', { text: 'Mancha más pequeña que se imprime (mm)' }), detail),
+    el('label', { class: 'field' }, el('span', { text: 'Mancha de color más pequeña (% del tamaño de la figura)' }), detail),
     el('label', { class: 'field' }, el('span', { text: 'Veces que el modelo revisa su coloreado' }), rounds),
     el('label', { class: 'field wide' }, el('span', { text: 'Carpeta de exportación' }), out),
     el('label', { class: 'field wide' }, el('span', { text: `Modelo de visión${st.model ? (st.model.available ? ` · ahora: ${st.model.model}` : ` · no disponible: ${st.model.reason}`) : ''}` }), url, model),
-    el('div', { class: 'field wide' }, el('span', { text: 'Filamentos de tu estantería' }), spools,
-      el('button', { class: 'btn small', type: 'button', onclick: () => spools.append(spoolRow({ hex: '#808080', name: '', material: 'PLA' })) }, 'Añadir filamento')),
+    el('label', { class: 'check wide' }, web, el('span', { text: 'Si una figura no tiene referencias, buscar en internet una imagen del personaje' })),
     el('small', { text: st.blender ? `Blender: ${st.blender}` : 'Blender no encontrado: hace falta para leer FBX y .blend.' })],
   buttons: [{ label: 'Cancelar', value: null }, { label: 'Guardar', value: 'ok', kind: 'primary' }] });
   if (!r) return;
-  const filaments = [...spools.children].map((row) => { const i = row.querySelectorAll('input'); return { hex: i[0].value, name: i[1].value.trim(), material: i[2].value.trim() || 'PLA' }; }).filter((f) => f.name);
   try {
     state.settings = await call('settings_set', { changes: { library_dirs: lines(lib), reference_dirs: lines(refs), photo_dirs: lines(photos), colors: Number(colors.value),
-      min_detail_mm: Number(detail.value), director_rounds: Number(rounds.value), export_dir: out.value.trim(), llm_url: url.value.trim(), llm_model: model.value.trim(), filaments } });
+      min_patch: Number(detail.value), web_references: web.checked, director_rounds: Number(rounds.value), export_dir: out.value.trim(), llm_url: url.value.trim(), llm_model: model.value.trim() } });
     state.status = await api('/api/status');
     toast('Ajustes guardados.', 'ok');
     await loadLibrary(true);
@@ -613,7 +605,7 @@ $('lib-group').addEventListener('change', (ev) => { state.group = ev.target.valu
 $('lib-refresh').addEventListener('click', () => loadLibrary(true));
 document.querySelectorAll('#view-seg button').forEach((b) => b.addEventListener('click', () => setWhat(b.dataset.what)));
 document.querySelectorAll('#tool-seg button').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
-$('brush-size').addEventListener('input', (ev) => { $('brush-mm').textContent = `${Number(ev.target.value).toFixed(1)} mm`; });
+$('brush-size').addEventListener('input', (ev) => { $('brush-mm').textContent = `${Number(ev.target.value).toFixed(1)} %`; });
 $('btn-undo').addEventListener('click', async () => { try { await call('paint_undo', { project_id: state.project.id }); await refreshProject('labels'); } catch (err) { fail(err); } });
 $('btn-color').addEventListener('click', () => startColor('auto'));
 $('btn-color-ai').addEventListener('click', () => startColor('ai'));
@@ -627,7 +619,7 @@ $('job-cancel').addEventListener('click', async () => { if (state.job) { try { a
 $('pal-add').addEventListener('click', async () => {
   const p = state.project;
   const used = p.palette.map((c) => c.hex);
-  const next = (state.settings.filaments.find((f) => !used.includes(f.hex)) || { hex: '#808080' }).hex;
+  const next = SPARE.find((h) => !used.includes(h)) || '#808080';
   try { await setProject(await call('palette_set', { project_id: p.id, colors: [...p.palette.map(() => null), { hex: next }] })); state.color = state.project.palette.length - 1; drawPalette(); } catch (err) { fail(err); }
 });
 $('pal-n').addEventListener('change', async (ev) => {
@@ -636,12 +628,19 @@ $('pal-n').addEventListener('change', async (ev) => {
   if (n < p.palette.length && !await confirmBox('Menos colores', p.has_model_colors && p.method === 'model' ? `Se vuelven a elegir ${n} colores desde la textura del modelo.` : `Los colores más parecidos se funden hasta quedar ${n}.`, 'Reducir')) { ev.target.value = p.palette.length; return; }
   try { const out = await call('palette_set', { project_id: p.id, count: n }); state.project = out; await loadFaces('labels'); await setProject(out); } catch (err) { fail(err); }
 });
-$('pal-snap').addEventListener('click', async () => { try { await setProject(await call('palette_set', { project_id: state.project.id, snap: true })); } catch (err) { fail(err); } });
 $('reg-detail').addEventListener('change', async (ev) => {
   $('loading').hidden = false; $('loading').textContent = 'Cortando la figura en regiones…';
   try { await call('regions_set', { project_id: state.project.id, detail: Number(ev.target.value) }); await refreshProject('regions'); setWhat('regions'); } catch (err) { fail(err); } finally { $('loading').hidden = true; }
 });
 $('ref-find').addEventListener('click', findRefs);
+$('ref-web').addEventListener('click', async () => {
+  $('loading').hidden = false; $('loading').textContent = 'Buscando una imagen del personaje…';
+  try {
+    const found = await call('source_fetch', { project_id: state.project.id });
+    toast(`Referencia añadida: ${found.name}. Si no es el personaje, quítala.`, 'ok', 6000);
+    await refreshProject(null);
+  } catch (err) { fail(err); } finally { $('loading').hidden = true; }
+});
 $('ref-path').addEventListener('click', async () => {
   const input = el('input', { type: 'text', class: 'input', placeholder: 'C:\\…\\modelo.fbx, una imagen o una carpeta', autocomplete: 'off' });
   const r = await modal({ title: 'Añadir referencia por ruta', body: [el('p', { text: 'Un modelo con texturas (OBJ, GLB, DAE, FBX, .blend), una imagen o una carpeta que los tenga.' }), input],

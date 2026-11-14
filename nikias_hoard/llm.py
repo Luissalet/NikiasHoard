@@ -77,15 +77,20 @@ class ModelClient:
                                 "max_tokens": max_tokens, "temperature": 0.2, "stream": False}
         if model:
             body["model"] = model
-        try:
-            r = httpx.post(url, json=body, timeout=timeout or float(self.settings["llm_timeout_s"]))
-            r.raise_for_status()
-            msg = r.json()["choices"][0]["message"]
-        except NikiasError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            raise NikiasError("unavailable", f"El modelo no contestó: {type(exc).__name__}: {exc}"[:300]) from None
-        text = msg.get("content") or ""
-        if isinstance(text, list):
-            text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
-        return extract_json(text or msg.get("reasoning_content") or "")
+        for attempt in (1, 2):                                 # an answer that is not JSON is asked for once more
+            try:
+                r = httpx.post(url, json=body, timeout=timeout or float(self.settings["llm_timeout_s"]))
+                r.raise_for_status()
+                msg = r.json()["choices"][0]["message"]
+            except NikiasError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise NikiasError("unavailable", f"El modelo no contestó: {type(exc).__name__}: {exc}"[:300]) from None
+            text = msg.get("content") or ""
+            if isinstance(text, list):
+                text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
+            try:
+                return extract_json(text or msg.get("reasoning_content") or "")
+            except NikiasError:
+                if attempt == 2:
+                    raise

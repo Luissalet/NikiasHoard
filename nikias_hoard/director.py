@@ -10,23 +10,24 @@ project."""
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 
 from .engine import labels as lab, palette as pal, regions as reg, render
 from .errors import NikiasError
 
-SYSTEM = ("You prepare 3D-printed figures for multi-material printing. A figure is one fused, single-colour sculpt; you decide which of a "
-          "few filament colours each part of it is printed in, so that the printed figure reads as the character in the references. "
+SYSTEM = ("You prepare 3D-printed figures for multi-colour printing. A figure is one fused, single-colour sculpt; you decide which of a "
+          "few flat colours each part of it is printed in, so that the printed figure reads as the character in the references. "
           "Think like a figure painter: flat, representative colours (no shading, highlights or gradients), as few as asked, each one "
           "placed on whole parts. Answer with one JSON object and nothing else.")
 
 YAWS = (0, 45, 90, 135, 180, 225, 270, 315)
 MARK = (255, 0, 190)             # the colour a part is painted in when it is the one being asked about
-TILE = 420
-PER_SHEET = 6
-SHEETS_PER_QUESTION = 2
+TILE = 512
+PER_SHEET = 4
+SHEETS_PER_QUESTION = 3
+CLOSE_UP = 0.03                  # a part that fills less than this share of its tile also gets a close-up
 
 
 def _hex_ok(text: Any) -> str:
@@ -83,7 +84,7 @@ def highlight_tiles(fig, face_region: np.ndarray, frames: list, zoom=None) -> di
         mine = face_region == r
         face_rgb = np.where(mine[:, None], np.array(MARK, np.uint8), clay)
         img = render.shade(frame, face_rgb)
-        if zoom is None and seen[:, r].max() < 0.008 * frame.size * frame.size:
+        if zoom is None and seen[:, r].max() < CLOSE_UP * frame.size * frame.size:
             c = centroids[mine]
             centre = 0.5 * (c.min(0) + c.max(0))
             radius = max(float(np.linalg.norm(c.max(0) - c.min(0))) * 0.9, fig.mesh.diagonal * 0.08)
@@ -101,15 +102,21 @@ def highlight_tiles(fig, face_region: np.ndarray, frames: list, zoom=None) -> di
 def _tile_sheets(tiles: dict[int, Any], ids: list[int]) -> list[bytes]:
     out = []
     for s in range(0, len(ids), PER_SHEET):
-        out.append(render.png(render.sheet([tiles[r] for r in ids[s:s + PER_SHEET]], columns=3)))
+        out.append(render.png(render.sheet([tiles[r] for r in ids[s:s + PER_SHEET]], columns=2)))
     return out
 
 
-def _colored_sheet(svc, fig, palette: list[dict[str, Any]], size: int = 760) -> bytes:
+def _colored_sheet(svc, fig, palette: list[dict[str, Any]], size: int = 760, numbers: bool = False) -> bytes:
     table = np.full((256, 3), render.UNSET_RGB, np.uint8)
     for k, c in enumerate(palette):
         table[k] = pal.from_hex(c["hex"])
-    imgs = [render.shade(render.rasterize(fig.mesh.P, fig.mesh.F, yaw=yaw, pitch=12, size=size, cull=_cull(fig)), table[fig.labels]) for yaw in (0, 90, 180, 270)]
+    imgs = []
+    for yaw in (0, 90, 180, 270):
+        frame = render.rasterize(fig.mesh.P, fig.mesh.F, yaw=yaw, pitch=12, size=size, cull=_cull(fig))
+        img = render.shade(frame, table[fig.labels])
+        if numbers:
+            img, _ = render.number_regions(img, frame, fig.regions)
+        imgs.append(img)
     return render.png(render.sheet(imgs, columns=2))
 
 
@@ -122,7 +129,8 @@ def _int_map(data: Any, hi_key: int, hi_val: int) -> dict[int, int]:
     if isinstance(data, dict):
         items = data.items()
     elif isinstance(data, list):
-        items = [(d.get("region"), d.get("color")) for d in data if isinstance(d, dict)]
+        items = [(next((d[k] for k in ("region", "part", "number", "id") if k in d), None), next((d[k] for k in ("color", "colour", "to", "index") if k in d), None))
+                 for d in data if isinstance(d, dict)]
     else:
         items = []
     for k, v in items:
@@ -141,11 +149,14 @@ def choose_palette(svc, project: dict[str, Any], fig, refs: list[bytes], count: 
     where = "The first picture(s) are the colour references; the last one is the uncoloured print figure from four sides." if refs else \
         "There are no reference pictures: use what you know of the character. The picture is the uncoloured print figure from four sides."
     user = (f"Figure: {project['name']} (collection: {project['source'].get('group', '')}).\n{where}\n"
-            f"Choose the {count} filament colours (fewer if the character has fewer) that best represent it when printed. Merge shades of "
+            f"Choose the {count} colours (fewer if the character has fewer) that best represent it when printed. Merge shades of "
             "one colour; keep a small colour only if the character is not recognisable without it (eyes, a logo). Put first the colour "
-            "that covers most of the figure.\n" + (f"The user asks: {wish}\n" if wish else "") +
+            "that covers most of the figure. The figure may show things the references do not (its back, something it holds): give "
+            "those the palette colour they have on the character as you know it.\n" + (f"The user asks: {wish}\n" if wish else "") +
+            "Then list every part of the character a painter would tell apart (hair, each piece of clothing, skin, eyes, shoes and their "
+            "soles, gloves, cuffs, anything it holds and each piece of that), with the palette index it is printed in.\n"
             'JSON: {"character": "who it is", "palette": [{"name": "short colour name in Spanish", "hex": "#rrggbb", "where": "parts that take it"}], '
-            '"left_out": "colours of the references you merged or dropped and why"}')
+            '"parts": [{"part": "hair and quills", "color": 0}], "left_out": "colours of the references you merged or dropped and why"}')
     answer = svc.llm.ask(SYSTEM, user, refs + [clay], max_tokens=3000)
     colors = []
     for c in answer.get("palette") or []:
@@ -154,16 +165,34 @@ def choose_palette(svc, project: dict[str, Any], fig, refs: list[bytes], count: 
                            "where": str(c.get("where") or "").strip()[:200]})
     if not colors:
         raise NikiasError("failed", "El modelo no propuso ninguna paleta.", "Vuelve a lanzarlo o añade referencias más claras.")
-    return {"character": str(answer.get("character") or "")[:120], "palette": colors[:count], "left_out": str(answer.get("left_out") or "")[:400]}
+    colors = colors[:count]
+    chart = []
+    for row in answer.get("parts") or []:
+        if not isinstance(row, dict) or not str(row.get("part") or "").strip():
+            continue
+        try:
+            k = int(row.get("color"))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= k < len(colors):
+            chart.append({"part": str(row["part"]).strip()[:80], "color": k})
+    return {"character": str(answer.get("character") or "")[:120], "palette": colors, "chart": chart[:40], "left_out": str(answer.get("left_out") or "")[:400]}
 
 
 def assign_regions(svc, project, fig, refs, palette, face_region: np.ndarray, wish: str, say=None, zoom=None, what: str = "the figure",
-                   progress: tuple[float, float] = (0.3, 0.55)) -> dict[str, Any]:
+                   progress: tuple[float, float] = (0.3, 0.55), chart: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
     """Ask the model, a dozen regions at a time, what each region is and which palette colour it takes."""
     count = int(face_region.max()) + 1
     tiles = highlight_tiles(fig, face_region, _frames(fig, TILE, zoom), zoom)
     ids = sorted(tiles)
     listing = "\n".join(f"{k}: {c['name']} {c['hex']}" + (f" ({c['where']})" if c.get("where") else "") for k, c in enumerate(palette))
+    table = ("Parts of the character and the colour each is printed in (row: part -> palette index):\n"
+             + "\n".join(f"{k}: {row['part']} -> {row['color']} ({palette[row['color']]['name']})" for k, row in enumerate(chart))
+             + "\nFirst decide which of these parts the magenta part belongs to and answer its row; the colour then comes from the table. "
+             "Mind look-alikes: a thin limb between a cuff and the body is an arm or a leg, not a glove; the shaft of a boot is the boot.\n") if chart else ""
+    shape = ('{"parts": {"<number>": {"is": "left glove", "row": 5, "color": 2, "mixed": false}}, "notes": "anything unclear"}  '
+             '("row" = the table row, or -1 when none fits and then "color" decides)') if chart else \
+        '{"parts": {"<number>": {"is": "left glove", "color": 2, "mixed": false}}, "notes": "anything unclear"}'
     step = PER_SHEET * SHEETS_PER_QUESTION
     mapping: dict[int, int] = {}
     parts: dict[int, str] = {}
@@ -176,12 +205,12 @@ def assign_regions(svc, project, fig, refs, palette, face_region: np.ndarray, wi
         lead = ("Picture 1: the colour references. " if refs else "") + "Then the palette strip. Then tiles: every tile shows " + what + \
             " in plain grey with exactly ONE part painted bright magenta; the number in the tile's corner is that part's number. " \
             "A small part also has a close-up in the tile's lower right corner. Magenta is only a marker, not a colour of the character."
-        user = (f"Figure: {project['name']} (collection: {project['source'].get('group', '')}).\n{lead}\nPalette (index: name):\n{listing}\n"
+        user = (f"Figure: {project['name']} (collection: {project['source'].get('group', '')}).\n{lead}\nPalette (index: name):\n{listing}\n{table}"
                 f"The parts in these tiles are numbers {', '.join(str(r) for r in batch)}. For each one say what the magenta part is (a few words) "
                 "and the palette index it is printed in on the real character. If the magenta part clearly covers areas of different colours "
                 '(for example hair and face together), set "mixed" to true and give the colour of its larger share.\n'
                 + (f"The user asks: {wish}\n" if wish else "") +
-                'JSON: {"parts": {"<number>": {"is": "left glove", "color": 2, "mixed": false}}, "notes": "anything unclear"}')
+                "JSON: " + shape)
         answer = svc.llm.ask(SYSTEM, user, refs + [_swatch(palette)] + _tile_sheets(tiles, batch), max_tokens=5000)
         got = answer.get("parts") if isinstance(answer.get("parts"), dict) else answer.get("regions") if isinstance(answer.get("regions"), dict) else {}
         for key, val in got.items():
@@ -192,10 +221,18 @@ def assign_regions(svc, project, fig, refs, palette, face_region: np.ndarray, wi
             if r not in batch:
                 continue
             if isinstance(val, dict):
+                c = -1
                 try:
-                    c = int(val.get("color"))
+                    row = int(val.get("row"))
+                    if chart and 0 <= row < len(chart):
+                        c = chart[row]["color"]             # the part it named decides, whatever colour it wrote next to it
                 except (TypeError, ValueError):
-                    continue
+                    pass
+                if c < 0:
+                    try:
+                        c = int(val.get("color"))
+                    except (TypeError, ValueError):
+                        continue
                 parts[r] = str(val.get("is") or "")[:80]
                 if val.get("mixed") is True:
                     mixed.append({"region": r, "why": parts[r]})
@@ -247,12 +284,12 @@ def where_are(svc, project, fig, refs, palette, parts: dict[int, str], idle: lis
     return out[:3]
 
 
-def split_mixed(svc, project, fig, refs, palette, mixed: list[dict[str, Any]], wish: str, say, log: list) -> None:
+def split_mixed(svc, project, fig, refs, palette, mixed: list[dict[str, Any]], wish: str, say, log: list, chart=None) -> None:
     """Regions the model found mixed are cut finer and asked again, one by one."""
     detail = int(project.get("detail", 3))
     if not mixed or detail >= 5:
         return
-    fine = reg.segment(fig.mesh, min(5, detail + 2), 250)
+    fine = reg.segment(fig.mesh, min(5, detail + 1), 250)
     for n, mx in enumerate(mixed[:4]):
         r = mx["region"]
         inside = fig.regions == r
@@ -271,7 +308,11 @@ def split_mixed(svc, project, fig, refs, palette, mixed: list[dict[str, Any]], w
         centre = 0.5 * (c.min(0) + c.max(0))
         radius = float(np.linalg.norm(c.max(0) - c.min(0))) * 0.55
         say(f"partiendo la región {r} que mezcla colores", 0.55 + 0.05 * n)
-        got = assign_regions(svc, project, fig, refs, palette, face_sub, wish, zoom=(*centre, max(radius, 1e-3)), what=f"a close-up of the part \"{mx['why'] or r}\"")
+        try:
+            got = assign_regions(svc, project, fig, refs, palette, face_sub, wish, zoom=(*centre, max(radius, 1e-3)), what=f"a close-up of the part \"{mx['why'] or r}\"", chart=chart)
+        except NikiasError as exc:
+            log.append({"step": "split", "region": r, "result": f"sin partir: {exc.message}", "why": mx["why"]})
+            continue
         painted = _apply(fig, face_sub, got["mapping"])
         log.append({"step": "split", "region": r, "pieces": int(len(keep)), "assigned": {str(k): v for k, v in got["mapping"].items()},
                     "parts": {str(k): v for k, v in got["parts"].items()}, "faces": painted, "why": mx["why"]})
@@ -289,13 +330,15 @@ def review(svc, project, fig, refs, palette, parts: dict[int, str], wish: str) -
     listing = "\n".join(f"{k}: {c['name']} {c['hex']}" for k, c in enumerate(palette))
     rows = "\n".join(f"{r}: {parts.get(r) or 'part'} -> {palette[c]['name']} ({c})" for r, c in sorted(current.items()))
     user = (f"Figure: {project['name']}.\n" + ("Picture 1: the colour references. " if refs else "") +
-            "The last picture is the figure exactly as it would print with the current colouring, from four sides.\n"
+            "The next picture is the figure exactly as it would print with the current colouring, from four sides; the last one is the same "
+            "with each part's number written on it.\n"
             f"Palette:\n{listing}\nParts and the colour each has now (number: part -> colour):\n{rows}\n"
             "Compare the printed look with the character part by part. List ONLY the parts whose colour is clearly wrong, with the palette "
-            "index they should have; if it already reads as the character, change nothing. You may also correct a palette colour's hex.\n"
+            "index they should have, inside \"changes\" (a part you only mention in the comment is not changed); if it already reads as the "
+            "character, change nothing. You may also correct a palette colour's hex.\n"
             + (f"The user asks: {wish}\n" if wish else "") +
             'JSON: {"ok": true or false, "changes": {"7": 2}, "palette": [{"index": 1, "hex": "#rrggbb"}], "comment": "what you saw"}')
-    answer = svc.llm.ask(SYSTEM, user, refs + [_colored_sheet(svc, fig, palette)], max_tokens=4000)
+    answer = svc.llm.ask(SYSTEM, user, refs + [_colored_sheet(svc, fig, palette, 900), _colored_sheet(svc, fig, palette, 900, numbers=True)], max_tokens=4000)
     tweaks = []
     for t in answer.get("palette") or []:
         if isinstance(t, dict) and _hex_ok(t.get("hex")):
@@ -316,17 +359,25 @@ def run(svc, pid: str, say, params: dict[str, Any]) -> dict[str, Any]:
     count = int(params.get("colors") or s["colors"])
     rounds = int(params["rounds"]) if int(params.get("rounds", -1)) >= 0 else int(s["director_rounds"])
     wish = str(params.get("wish") or "")
-    refs = _refs(svc, pid)
     log: list[dict[str, Any]] = []
     started = time.time()
+    if not project["sources"] and s.get("web_references"):
+        say("buscando una imagen del personaje", 0.03)
+        try:
+            found = svc.fetch_reference(pid)
+            log.append({"step": "reference", "name": found["name"], "page": found.get("path", "")})
+        except NikiasError as exc:
+            log.append({"step": "reference", "name": "", "note": exc.message})
+        project = svc.store.get(pid)
+    refs = _refs(svc, pid)
 
     say("el modelo elige la paleta", 0.08)
     chosen = choose_palette(svc, project, fig, refs, count, wish)
     palette = chosen["palette"]
-    log.append({"step": "palette", "character": chosen["character"], "palette": palette, "left_out": chosen["left_out"]})
+    log.append({"step": "palette", "character": chosen["character"], "palette": palette, "chart": chosen["chart"], "left_out": chosen["left_out"]})
 
     say("el modelo reparte los colores por regiones", 0.3)
-    got = assign_regions(svc, project, fig, refs, palette, fig.regions.astype(np.int64), wish, say)
+    got = assign_regions(svc, project, fig, refs, palette, fig.regions.astype(np.int64), wish, say, chart=chosen["chart"])
     svc._push_undo(fig)
     fig.labels[:] = lab.UNSET
     _apply(fig, fig.regions.astype(np.int64), got["mapping"])
@@ -339,16 +390,24 @@ def run(svc, pid: str, say, params: dict[str, Any]) -> dict[str, Any]:
     idle = [k for k in range(len(palette)) if k not in used]
     if idle:                                               # a colour of the palette nobody got: it lives inside a bigger part
         say("el modelo busca dónde van los colores sin repartir", 0.52)
-        for r in where_are(svc, project, fig, refs, palette, got["parts"], idle):
+        try:
+            inside = where_are(svc, project, fig, refs, palette, got["parts"], idle)
+        except NikiasError:
+            inside = []
+        for r in inside:
             if all(m["region"] != r for m in mixed):
                 mixed.append({"region": r, "why": got["parts"].get(r, "")})
         log.append({"step": "idle", "colors": [palette[k]["name"] for k in idle], "inside": [m["region"] for m in mixed]})
-    split_mixed(svc, project, fig, refs, palette, mixed, wish, say, log)
+    split_mixed(svc, project, fig, refs, palette, mixed, wish, say, log, chosen["chart"])
     fig.labels = svc._fill_unset(fig.labels, fig.mesh) if (fig.labels != lab.UNSET).any() else np.zeros_like(fig.labels)
 
     for n in range(rounds):
         say(f"el modelo revisa su coloreado ({n + 1} de {rounds})", 0.7 + 0.2 * n / max(rounds, 1))
-        seen = review(svc, project, fig, refs, palette, got["parts"], wish)
+        try:
+            seen = review(svc, project, fig, refs, palette, got["parts"], wish)
+        except NikiasError as exc:                          # a review that cannot be read costs the review, not the colouring
+            log.append({"step": "review", "round": n + 1, "ok": False, "changes": {}, "palette": [], "faces": 0, "comment": f"sin revisión: {exc.message}"})
+            break
         for k, hexv in seen["tweaks"]:
             palette[k]["hex"] = hexv
         changed = _apply(fig, fig.regions.astype(np.int64), seen["changes"]) if seen["changes"] else 0
@@ -358,7 +417,7 @@ def run(svc, pid: str, say, params: dict[str, Any]) -> dict[str, Any]:
             break
 
     say("limpiando bordes e islas", 0.94)
-    cleaned = svc._clean(fig, s["min_detail_mm"], s["smooth"])
+    cleaned = svc._clean(fig, s["min_patch"], s["smooth"])
     counts = np.bincount(fig.labels[fig.labels != lab.UNSET], minlength=len(palette))
     dropped = [palette[k]["name"] for k in range(len(palette)) if counts[k] == 0]
     if dropped and len(dropped) < len(palette):            # a colour that ended on no face is a spool nobody needs to load
@@ -368,14 +427,7 @@ def run(svc, pid: str, say, params: dict[str, Any]) -> dict[str, Any]:
         fig.labels = remap[fig.labels]
         palette = [palette[k] for k in keep]
         log.append({"step": "unused", "colors": dropped})
-    spools = s["filaments"]
-    entries = []
-    for c in palette:
-        entry = {"hex": c["hex"], "name": c["name"], "custom_name": True, "where": c.get("where", "")}
-        near = pal.nearest_filament(pal.from_hex(c["hex"]), spools)
-        if near:
-            entry["filament"] = near
-        entries.append(entry)
+    entries = [{"hex": c["hex"], "name": c["name"], "custom_name": True, "where": c.get("where", "")} for c in palette]
     project = svc.store.get(pid)
     project["palette"] = entries
     project["method"] = "ai"
