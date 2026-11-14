@@ -111,7 +111,7 @@ OpenAI-compatible server set in Ajustes. Tests: `python -m pytest`.
 - `nikias_hoard/engine/`: `mesh.py` (STL, welding, neighbours), `regions.py` (folds and regions), `source.py`
   (sampling a textured model, laying it over the figure, passing colours), `palette.py` (CIELAB, reduction),
   `labels.py` (smoothing, islands, brush), `render.py` (pictures), `export.py` (3MF, OBJ, STL), `modelio.py` (textured
-  model readers), `blender.py` + `blender_export.py` (FBX and `.blend`).
+  model readers), `pose.py` (part-by-part transfer for a model in another pose; not wired in yet), `blender.py` + `blender_export.py` (FBX and `.blend`).
 - `nikias_hoard/director.py` (the vision model's direction), `llm.py` (its client).
 - `nikias_hoard/services.py` (library, projects, references, jobs, palette, paint, export), `agent_tools.py` (the
   catalogue), `api/` (routes), `static/` (the studio), `store.py` (projects on disk).

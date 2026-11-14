@@ -110,7 +110,8 @@ compatible con OpenAI que se indique en Ajustes. Tests: `python -m pytest`.
 
 - `nikias_hoard/engine/`: `mesh.py` (STL, soldado, vecinos), `regions.py` (pliegues y regiones), `source.py`
   (muestreo de un modelo con texturas, colocación sobre la figura, paso de color), `palette.py` (CIELAB, reducción), `labels.py` (suavizado, islas, pincel), `render.py` (imágenes), `export.py` (3MF, OBJ, STL),
-  `modelio.py` (lectores de modelos con texturas), `blender.py` + `blender_export.py` (FBX y `.blend`).
+  `modelio.py` (lectores de modelos con texturas), `pose.py` (paso de color parte a parte para un modelo en otra pose;
+  todavía sin conectar), `blender.py` + `blender_export.py` (FBX y `.blend`).
 - `nikias_hoard/director.py` (la dirección del modelo de visión), `llm.py` (su cliente), `references.py` (la imagen
   del personaje buscada por nombre).
 - `nikias_hoard/services.py` (biblioteca, proyectos, referencias, trabajos, paleta, pintura, exportación),

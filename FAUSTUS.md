@@ -81,6 +81,9 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
 ## Cannot
 
 - Pass colours from a textured model in a different pose than the figure: such a model is only a reference picture.
+  `engine/pose.py` (`transfer`: parts of the model matched to regions by shape and size, each fitted on its own,
+  abstaining when a match is not clear) exists and is tested on built shapes, but nothing calls it yet: it cannot
+  tell two alike parts apart and has not been tried on real figures.
 - Find a colour border that no fold marks (a pattern on a smooth surface): that needs the brush or a fitting model.
 - Split triangles along a colour border: borders follow the mesh's own triangles.
 - Carry material presets inside the 3MF (`export.write_3mf(project=True)` keeps an attempt OrcaSlicer rejects). The
