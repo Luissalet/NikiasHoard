@@ -7,6 +7,7 @@
   OrcaSlicer opens the figure and drops the painting.
 - ``color`` 3MF: the 3MF materials extension (a colour group, one colour per triangle): any program that follows the
   standard shows the colours, and slicers that import standard colour map them to filaments.
+- One closed solid per colour, as parts of one object (``export_parts.py``).
 - OBJ + MTL: one material per colour.
 - STL per colour: the faces of each colour as their own surface (for painting guides and masks; they are not closed
   solids).

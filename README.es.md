@@ -64,6 +64,16 @@ proporción a ella, así que se colorea igual a cualquier escala.
   OBJ con un material por color, un STL por color y un texto con la lista de colores. Las variantes flat
   y pivot de la figura toman sus colores y se escriben con ella. Los archivos van a una carpeta `Multicolor` junto a
   la figura, o a la carpeta que se indique.
+- **Un sólido por color**: un 3MF multicolor en el que cada color es su propia malla cerrada: como piezas de un
+  objeto para Bambu Studio / OrcaSlicer (cada pieza con su filamento), como volúmenes de un objeto para PrusaSlicer
+  (cada uno con su extrusor) y como 3MF estándar (un objeto de malla por color con su color como material base).
+  Un color es una piel de una profundidad fija (una parte del tamaño de la figura, más fina donde la figura es fina)
+  sobre un núcleo del color con más superficie; los sólidos llenan la figura exactamente y no se solapan.
+- **Imprimibilidad**: se comprueba si la figura tiene aristas abiertas, aristas compartidas por más de dos caras,
+  caras con la normal al revés, piezas con las normales hacia dentro, caras repetidas o sin área y motas, y se
+  listan sus piezas sueltas con las que quedarían en el aire. Antes de escribir los sólidos se repara la superficie
+  (se quitan caras repetidas, sin área y motas, se orienta cada pieza hacia fuera y se cierran los bordes abiertos).
+  Cada pieza suelta (una base, unas gafas) se puede escribir también como un STL propio apoyado en la plataforma.
 
 ## Conexión con Faustus y Hoard Hub
 
@@ -77,7 +87,7 @@ el puerto 5252 y comprueba `/api/health`. Lo mismo que hacen los botones está d
 | Referencias | `source_find`, `source_fetch`, `source_add`, `source_remove`, `source_look` |
 | Coloreado | `regions_set`, `color_start`, `job_status`, `job_cancel` |
 | Paleta y pintura | `palette_set`, `paint`, `paint_undo`, `clean` |
-| Vistas y archivos | `figure_look`, `result_export` |
+| Vistas y archivos | `figure_look`, `result_export`, `print_check` |
 | Ajustes | `settings_get`, `settings_set` |
 
 Nikias toma además de la biblioteca de skills de la familia los procedimientos que su trabajo necesita y se los da a
@@ -115,7 +125,7 @@ compatible con OpenAI que se indique en Ajustes. Tests: `python -m pytest`.
 ## Dónde está cada cosa
 
 - `nikias_hoard/engine/`: `mesh.py` (STL, soldado, vecinos), `regions.py` (pliegues y regiones), `source.py`
-  (muestreo de un modelo con texturas, colocación sobre la figura, paso de color), `palette.py` (CIELAB, reducción), `labels.py` (suavizado, islas, pincel), `render.py` (imágenes), `export.py` (3MF, OBJ, STL),
+  (muestreo de un modelo con texturas, colocación sobre la figura, paso de color), `palette.py` (CIELAB, reducción), `labels.py` (suavizado, islas, pincel), `render.py` (imágenes), `export.py` (3MF, OBJ, STL), `printable.py` (comprobar y reparar), `solids.py` (un sólido cerrado por color), `export_parts.py` (los sólidos como 3MF),
   `modelio.py` (lectores de modelos con texturas), `pose.py` (paso de color parte a parte para un modelo en otra pose;
   todavía sin conectar), `blender.py` + `blender_export.py` (FBX y `.blend`).
 - `nikias_hoard/director.py` (la dirección del modelo de visión), `llm.py` (su cliente), `references.py` (la imagen

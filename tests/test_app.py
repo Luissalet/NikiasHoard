@@ -264,7 +264,9 @@ def test_export_writes_the_figure_and_its_variants(client):
     out = call(client, "result_export", project_id=pid)
     names = sorted(f.replace("\\", "/").rsplit("/", 1)[-1] for f in out["files"])
     assert out["folder"].replace("\\", "/").endswith("Sonic/Multicolor") and out["uncolored_faces"] > 0 and "color 1" in out["note"]
-    assert names == sorted([f"{stem} {kind}.3mf" for stem in ("Amy", "Amy flat", "Amy pivot") for kind in ("Bambu-Orca", "Prusa", "color")] + ["Amy colores.txt"])
+    assert names == sorted([f"{stem} {kind}.3mf" for stem in ("Amy", "Amy flat", "Amy pivot")
+                            for kind in ("Bambu-Orca", "Prusa", "color", "partes", "partes Bambu-Orca", "partes Prusa")] + ["Amy colores.txt"])
+    assert [p["name"] for p in out["printability"]] == ["Amy", "Amy flat", "Amy pivot"] and all(len(p["solids"]) == 2 for p in out["printability"])
     assert [v["name"] for v in out["variants"]] == ["flat", "pivot"]
     assert all(v["fit"] < 0.005 and v["new_faces_share"] < 0.01 for v in out["variants"])
     with zipfile.ZipFile(client.lib / "Multicolor" / "Amy flat Bambu-Orca.3mf") as z:
@@ -278,6 +280,48 @@ def test_export_writes_the_figure_and_its_variants(client):
     assert len(one["files"]) == 2 + 2 + 1
     r = client.get(f"/api/projects/{pid}/download/prusa")
     assert r.status_code == 200 and "Amy%20Prusa.3mf" in r.headers["content-disposition"] and r.content[:2] == b"PK"
+
+
+def two_pieces_with_a_hole(client):
+    """A figure and a ball floating beside it, with eight faces missing and some turned over."""
+    fig = shapes.figure(90, 56)
+    ball = shapes.figure(24, 16)
+    P = np.vstack([fig.P, ball.P * 0.5 + [40.0, 0, 30.0]])
+    F = np.vstack([fig.F, ball.F + len(fig.P)])
+    F[::11] = F[::11][:, [0, 2, 1]]
+    F = np.delete(F, np.arange(300, 308), axis=0)
+    meshes.write_stl(client.lib / "Duo.stl", P, F)
+    return call(client, "project_create", source=str(client.lib / "Duo.stl"))["id"]
+
+
+def test_print_check_reports_and_repairs_without_touching_the_project(client):
+    pid = two_pieces_with_a_hole(client)
+    c = call(client, "print_check", project_id=pid, repair=True)
+    assert c["check"]["open_edges"] > 0 and not c["check"]["watertight"] and c["check"]["piece_count"] == 2 and len(c["check"]["floating_pieces"]) == 1
+    assert any("aristas abiertas" in a for a in c["advice"]) and any("en el aire" in a for a in c["advice"])
+    assert c["after"]["watertight"] and c["repair"]["holes_closed"] >= 1 and c["advice_after"] != c["advice"]
+    assert call(client, "print_check", project_id=pid)["check"]["open_edges"] == c["check"]["open_edges"]       # nothing was written
+    assert "repair" not in call(client, "print_check", project_id=pid)
+
+
+def test_export_writes_one_closed_solid_per_colour_and_the_loose_pieces(client):
+    pid = two_pieces_with_a_hole(client)
+    call(client, "palette_set", project_id=pid, colors=[{"hex": "#c12e1f"}, {"hex": "#1f5fc4"}])
+    regions = call(client, "regions_set", project_id=pid)["regions"]
+    call(client, "paint", project_id=pid, color=1, regions=[regions[-1]["id"]])
+    out = call(client, "result_export", project_id=pid, formats=["parts", "parts-bambu", "parts-prusa"], variants=False, split=True)
+    names = sorted(f.replace("\\", "/").rsplit("/", 1)[-1] for f in out["files"])
+    assert names == sorted(["Duo partes Bambu-Orca.3mf", "Duo partes Prusa.3mf", "Duo partes.3mf", "Duo pieza 1.stl", "Duo pieza 2.stl", "Duo colores.txt"])
+    report = out["printability"][0]
+    assert report["repair"]["holes_closed"] >= 1 and report["before"]["open_edges"] > 0 and all(s["closed"] for s in report["solids"])
+    assert len(report["solids"]) == 2 and out["pieces"] == ["Duo pieza 1.stl", "Duo pieza 2.stl"]
+    for piece in out["pieces"]:
+        m = meshes.load_stl(client.lib / "Multicolor" / piece)
+        assert abs(float(m.P[:, 2].min())) < 1e-4
+    raw = call(client, "result_export", project_id=pid, formats=["parts"], variants=False, repair=False, folder=str(client.lib.parent / "raw"))
+    assert raw["printability"][0]["repair"] == {} and raw["pieces"] == []
+    r = client.get(f"/api/projects/{pid}/download/parts-bambu")
+    assert r.status_code == 200 and r.content[:2] == b"PK" and "partes%20Bambu-Orca.3mf" in r.headers["content-disposition"]
 
 
 def test_settings_and_delete(client):

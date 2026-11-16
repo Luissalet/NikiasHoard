@@ -477,22 +477,39 @@ async function startColor(mode) {
 }
 
 async function exportDialog() {
-  const p = state.project, s = state.settings;
-  const kinds = [['bambu', '3MF pintado para Bambu Studio / OrcaSlicer'], ['prusa', '3MF pintado para PrusaSlicer'], ['color', '3MF de color estándar'], ['obj', 'OBJ con un material por color'], ['stl', 'Un STL por color (superficies, para guías de pintura)']];
+  const p = state.project, s = state.settings || (state.settings = await call('settings_get'));
+  const kinds = [['bambu', '3MF pintado para Bambu Studio / OrcaSlicer'], ['prusa', '3MF pintado para PrusaSlicer'], ['color', '3MF de color estándar'], ['obj', 'OBJ con un material por color'], ['stl', 'Un STL por color (superficies, para guías de pintura)'],
+    ['parts-bambu', '3MF con un sólido cerrado por color, como piezas de un objeto de Bambu Studio / OrcaSlicer'], ['parts-prusa', '3MF con un sólido cerrado por color, como volúmenes de un objeto de PrusaSlicer'],
+    ['parts', '3MF estándar con un sólido cerrado por color']];
   const boxes = kinds.map(([k, label]) => el('label', { class: 'check' }, el('input', { type: 'checkbox', value: k, checked: s.export_formats.includes(k) }), el('span', { text: label })));
   const variants = el('input', { type: 'checkbox', checked: true });
+  const repair = el('input', { type: 'checkbox', checked: s.repair !== false });
+  const split = el('input', { type: 'checkbox' });
+  const depth = el('input', { type: 'number', class: 'input', min: '0.2', max: '20', step: '0.1', value: String(s.skin_depth || 2) });
+  const report = el('div', { class: 'files' });
+  const check = el('button', { class: 'btn small', type: 'button', text: 'Comprobar si se puede imprimir', onclick: async () => {
+    report.textContent = 'Comprobando…';
+    try { const c = await call('print_check', { project_id: p.id, repair: true }); report.textContent = [...c.advice, ...(c.repair ? ['Tras reparar:', ...c.advice_after] : []),
+      `Piezas sueltas: ${c.check.piece_count}`].join('\n'); } catch (err) { report.textContent = ''; fail(err); }
+  } });
   const names = p.source.variants.map((v) => v.name).join(', ');
-  const r = await modal({ title: 'Exportar', body: [...boxes, p.source.variants.length ? el('label', { class: 'check' }, variants, el('span', { text: `También las variantes con los mismos colores (${names})` })) : null,
+  const r = await modal({ title: 'Exportar', body: [...boxes,
+    el('label', { class: 'check' }, repair, el('span', { text: 'Reparar la superficie antes de escribir los sólidos por color (cerrar agujeros, girar normales, quitar motas)' })),
+    el('label', { class: 'check' }, split, el('span', { text: 'Escribir también cada pieza suelta de la figura como STL' })),
+    el('label', { class: 'field' }, el('span', { text: 'Profundidad del color en los sólidos (% del tamaño de la figura)' }), depth), check, report,
+    p.source.variants.length ? el('label', { class: 'check' }, variants, el('span', { text: `También las variantes con los mismos colores (${names})` })) : null,
     el('p', { text: s.export_dir ? `Se guarda en ${s.export_dir}.` : 'Se guarda en una carpeta «Multicolor» junto a la figura.' })],
   buttons: [{ label: 'Cancelar', value: null }, { label: 'Exportar', value: 'ok', kind: 'primary' }],
   validate: () => (boxes.some((b) => b.querySelector('input').checked) ? '' : 'Marca al menos un formato.') });
   if (!r) return;
   $('loading').hidden = false; $('loading').textContent = 'Escribiendo los archivos…';
   try {
-    const out = await call('result_export', { project_id: p.id, formats: boxes.map((b) => b.querySelector('input')).filter((i) => i.checked).map((i) => i.value), variants: variants.checked });
+    const out = await call('result_export', { project_id: p.id, formats: boxes.map((b) => b.querySelector('input')).filter((i) => i.checked).map((i) => i.value), variants: variants.checked,
+      repair: repair.checked, split: split.checked, skin_depth: Number(depth.value) || null });
     $('loading').hidden = true;
     await modal({ title: 'Exportado', body: [el('p', { text: out.folder }), el('div', { class: 'files', text: out.files.map((f) => f.split(/[\\/]/).pop()).join('\n') }),
-      out.note ? el('p', { text: out.note }) : null, out.variants_failed.length ? el('p', { text: `No se pudieron leer: ${out.variants_failed.map((v) => v.name).join(', ')}` }) : null] });
+      out.note ? el('p', { text: out.note }) : null, out.pieces.length ? el('p', { text: `Piezas sueltas: ${out.pieces.join(', ')}` }) : null,
+      ...out.printability.map((c) => el('p', { text: c.error ? `${c.name}: no se pudieron escribir los sólidos (${c.error})` : `${c.name}: ${c.solids.map((x) => `color ${x.color} ${x.closed ? 'cerrado' : 'abierto'}`).join(', ')}` })), out.variants_failed.length ? el('p', { text: `No se pudieron leer: ${out.variants_failed.map((v) => v.name).join(', ')}` }) : null] });
     await refreshProject(null);
   } catch (err) { fail(err); } finally { $('loading').hidden = true; }
 }

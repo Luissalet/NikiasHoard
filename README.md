@@ -63,6 +63,16 @@ figure colours the same at any scale.
   one material per colour, one STL per colour, and a text file listing the colours. The figure's flat and
   pivot variants take the colours from the figure and are written with it. Files go to a `Multicolor` folder next
   to the figure, or to the folder you set.
+- **One solid per colour**: a multicolour 3MF in which every colour is its own closed mesh: as the parts of one
+  object for Bambu Studio / OrcaSlicer (each part with its filament), as the volumes of one object for PrusaSlicer
+  (each with its extruder), and as standard 3MF (a mesh object per colour with its colour as base material). A
+  colour is a skin of a set depth (a share of the figure's size, thinner where the figure is thin) on a core of
+  the colour with most surface; the solids fill the figure exactly and do not overlap.
+- **Printability**: the figure is checked for open edges, edges shared by more than two faces, faces turned the
+  wrong way, shells pointing inwards, repeated and empty faces and dust, and its loose pieces are listed with
+  those that would hang in the air. Before writing the solids the surface is repaired (repeated and empty faces and
+  dust dropped, every shell made to face outwards, open rims closed). Each separate piece (a base, glasses) can also
+  be written as its own STL standing on the plate.
 
 ## Connection with Faustus and Hoard Hub
 
@@ -76,7 +86,7 @@ and checks `/api/health`. The same operations the buttons use are available to a
 | References | `source_find`, `source_fetch`, `source_add`, `source_remove`, `source_look` |
 | Colouring | `regions_set`, `color_start`, `job_status`, `job_cancel` |
 | Palette and paint | `palette_set`, `paint`, `paint_undo`, `clean` |
-| Views and files | `figure_look`, `result_export` |
+| Views and files | `figure_look`, `result_export`, `print_check` |
 | Settings | `settings_get`, `settings_set` |
 
 Nikias also takes from the family's skill library the procedures its work needs and hands them to connecting agents
@@ -105,7 +115,9 @@ OpenAI-compatible server set in Ajustes. Tests: `python -m pytest`.
   surface) is not a region: it is painted with the brush or comes from a model that fits.
 - The painted 3MF carries which colour (1, 2, 3…) each triangle uses, not the slicer project: which material each
   number is gets chosen in the slicer, with the list of colours written next to it. The Bambu/Orca file has been
-  opened in OrcaSlicer 2.3.1; the PrusaSlicer and standard-colour files are checked by structure only.
+  opened in OrcaSlicer 2.3.1; the PrusaSlicer and standard-colour files are checked by structure only. The
+  one-solid-per-colour files are read back as separate closed bodies by 3MF libraries; the filament of each part is
+  written in the slicers' own fields.
 - The picture looked up on the web is the lead one of the page named like the figure: when the file name is not the
   character's, it may bring something else; it shows under Referencias and can be removed.
 - The vision model takes several minutes per figure (one question per dozen regions, plus the reviews).
@@ -115,7 +127,7 @@ OpenAI-compatible server set in Ajustes. Tests: `python -m pytest`.
 
 - `nikias_hoard/engine/`: `mesh.py` (STL, welding, neighbours), `regions.py` (folds and regions), `source.py`
   (sampling a textured model, laying it over the figure, passing colours), `palette.py` (CIELAB, reduction),
-  `labels.py` (smoothing, islands, brush), `render.py` (pictures), `export.py` (3MF, OBJ, STL), `modelio.py` (textured
+  `labels.py` (smoothing, islands, brush), `render.py` (pictures), `export.py` (3MF, OBJ, STL), `printable.py` (check and repair), `solids.py` (one closed solid per colour), `export_parts.py` (the solids as 3MF), `modelio.py` (textured
   model readers), `pose.py` (part-by-part transfer for a model in another pose; not wired in yet), `blender.py` + `blender_export.py` (FBX and `.blend`).
 - `nikias_hoard/director.py` (the vision model's direction), `llm.py` (its client).
 - `nikias_hoard/services.py` (library, projects, references, jobs, palette, paint, export), `agent_tools.py` (the

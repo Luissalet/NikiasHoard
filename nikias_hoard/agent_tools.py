@@ -21,7 +21,7 @@ AGENT_INSTRUCTIONS = """Nikias's Hoard colours finished 3D-print figures (single
 Flow: library_scan lists the figures in the user's folders; project_create opens one (welds it and cuts it into regions along its folds: where parts meet and engraved outlines, closing the gaps an outline leaves). Colour comes from references: source_add takes a textured model of the same figure (OBJ, GLB, DAE, FBX, .blend), pictures, or a folder; source_find looks for candidates by the figure's name in the user's folders; source_fetch looks the character up on the web and keeps its picture. A model in the same pose as the figure passes its colours directly (its fit says how well the shapes agree: under about 0.012 it is trusted). Otherwise the vision model colours: with no reference in the project it first fetches a picture of the character, then reads the references, chooses the palette, writes which colour each part of the character takes, assigns a colour to each numbered region, cuts finer the regions it finds mixed, and finally looks at its own result and corrects it. color_start runs either in the background (job_status).
 See before deciding: figure_look shows the figure as clay, by regions (numbered), by colour, or clay next to colour, from any view or zoomed on a spot; source_look shows a reference.
 Correct by hand: palette_set changes colours and their names, how many there are, merges two or makes one the base (colour 1); paint fills whole regions, the patch around given faces, or brush spots; regions_set cuts the figure coarser or finer (detail 1-5); clean straightens borders and absorbs patches too small to matter; paint_undo takes back the last change.
-result_export writes, next to the figure in a Multicolor folder: a painted 3MF for Bambu Studio / OrcaSlicer, one for PrusaSlicer, a standard-colour 3MF, an OBJ with one material per colour, a text file listing the colours, and the same for the figure's variants (its "flat" and "pivot" cuts take the colours from the figure).
+result_export writes, next to the figure in a Multicolor folder: a painted 3MF for Bambu Studio / OrcaSlicer, one for PrusaSlicer, a standard-colour 3MF, an OBJ with one material per colour, a text file listing the colours, and the same for the figure's variants (its "flat" and "pivot" cuts take the colours from the figure). The formats parts, parts-bambu and parts-prusa write one closed solid per colour (each colour is a skin of a set depth on a core of the colour with most surface; together they fill the figure exactly) as the parts of one object, each with its filament. print_check says whether the figure is a closed, outward-facing solid, lists its loose pieces and which would hang in the air; result_export repairs the surface before writing the parts files (repair) and can write each separate piece as its own STL (split).
 Palette index 0 is colour 1, the object's own; indexes are 0-based everywhere. Coordinates are in the figure's own units and Z is up; sizes that decide the result (regions, smallest patch) are shares of the figure's size, so it colours the same at any scale."""
 
 
@@ -142,11 +142,22 @@ class LookArgs(ProjectId):
 
 
 class ExportArgs(ProjectId):
-    formats: Optional[list[Literal["bambu", "prusa", "color", "obj", "stl"]]] = Field(
+    formats: Optional[list[Literal["bambu", "prusa", "color", "obj", "stl", "parts", "parts-bambu", "parts-prusa"]]] = Field(
         None, description="bambu: painted 3MF for Bambu Studio / OrcaSlicer. prusa: painted 3MF for PrusaSlicer. color: standard-colour 3MF. obj: OBJ + MTL. "
-        "stl: one STL per colour (open surfaces, for painting guides). Default: the setting export_formats.")
+        "stl: one STL per colour (open surfaces, for painting guides). parts: multicolour 3MF with one closed solid per colour as its own mesh object "
+        "(standard 3MF). parts-bambu / parts-prusa: the same solids as the parts of one object in Bambu Studio / OrcaSlicer or PrusaSlicer, each with the "
+        "filament of its colour. Default: the setting export_formats.")
     folder: str = Field("", max_length=1000, description="Where to write (default: a Multicolor folder next to the figure).")
     variants: bool = Field(True, description="Also write the figure's variants (flat, pivot) with the same colours.")
+    repair: Optional[bool] = Field(None, description="Before writing the parts files, drop repeated and empty faces and dust, make every piece face outwards "
+                                   "and close open rims (default: the setting repair, on).")
+    split: bool = Field(False, description="Also write each separate piece of the figure (a base, glasses, a loose part) as its own STL standing on the plate.")
+    skin_depth: Optional[float] = Field(None, ge=0.2, le=20, description="How deep each colour goes in the parts files, in % of the figure's size "
+                                        "(default: the setting skin_depth, 2); thinner wherever the figure is thin.")
+
+
+class PrintCheckArgs(ProjectId):
+    repair: bool = Field(False, description="Also say what the automatic repair would leave (nothing is written).")
 
 
 class SettingsArgs(BaseModel):
@@ -234,9 +245,13 @@ TOOLS = [
          ann(draft_safe=True), lambda s, a: s.clean(a.project_id, a.min_patch, a.smooth), timeout_s=300),
     Tool("figure_look", _d("See the figure: clay, numbered regions, colours, or clay next to colour; any view or a close-up.",
                            synonyms="ver figura, render, comparar"), LookArgs, ann(read_only=True), _look, timeout_s=300, capped=False),
-    Tool("result_export", _d("Write the painted files (3MF for Bambu Studio/OrcaSlicer and PrusaSlicer, standard-colour 3MF, OBJ) and the list of colours.",
+    Tool("result_export", _d("Write the painted files (3MF for Bambu Studio/OrcaSlicer and PrusaSlicer, standard-colour 3MF, OBJ), the multicolour 3MF with one closed solid per colour, and the list of colours.",
                              synonyms="exportar, 3MF, multicolor, guardar"), ExportArgs, ann(draft_safe=True),
-         lambda s, a: s.export(a.project_id, a.formats, a.folder, a.variants), timeout_s=900),
+         lambda s, a: s.export(a.project_id, a.formats, a.folder, a.variants, a.repair, a.split, a.skin_depth), timeout_s=900),
+    Tool("print_check", _d("Is the figure printable as it is: open edges, edges shared by more than two faces, faces turned the wrong way, shells pointing inwards, "
+                           "repeated and empty faces, dust, and the loose pieces with which of them would hang in the air. With repair, also what the automatic "
+                           "repair leaves.", synonyms="imprimible, estanco, normales, piezas flotantes, reparar malla"), PrintCheckArgs, ann(read_only=True),
+         lambda s, a: s.print_check(a.project_id, a.repair), timeout_s=300),
     Tool("settings_get", _d("Settings: library, reference and photo folders, colours per figure, region detail, smallest patch, web references, export formats."),
          Empty, ann(read_only=True), lambda s, a: s.settings.get()),
     Tool("settings_set", _d("Change settings (library_dirs: folders with the figures; reference_dirs: where textured models and pictures are looked for; "

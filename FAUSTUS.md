@@ -74,7 +74,27 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
   open surfaces per colour), plus `<figure> colores.txt`. Palette index 0 is colour 1 and carries no tag. The figure
   stands on the plate. Variants are read, each face takes the colour of the nearest face of
   the figure, faces the cut created take the colour around them. Default folder: `Multicolor` next to the figure, or
-  `export_dir/<group>`. `GET /api/projects/<id>/download/<bambu|prusa|color>` sends one file to the browser.
+  `export_dir/<group>`. `GET /api/projects/<id>/download/<bambu|prusa|color|parts|parts-bambu|parts-prusa>` sends one file to the browser.
+- One solid per colour (`result_export` formats `parts`, `parts-bambu`, `parts-prusa`; `engine/solids.py`,
+  `engine/export_parts.py`): the core is the colour with most surface (`core` = its palette index + 1 in the report);
+  every other colour is a skin made of its faces, the same faces moved inwards along the surface normal by `skin_depth`
+  (setting or argument, % of the figure's diagonal, default 2; per point as deep as fits without reaching another
+  surface, down to a fifth) and a wall along every edge where its patch ends. Walls are shared, so the solids fill
+  the figure exactly and do not overlap; each solid is checked closed and reported (`printability[].solids[].closed`).
+  `parts` is plain 3MF (a mesh object per colour with its colour as base material, one assembly object);
+  `parts-bambu` is the layout Bambu Studio / OrcaSlicer save for an object with parts, each part with `extruder` =
+  palette index + 1; `parts-prusa` is one object whose volumes are the solids, each with its extruder. Files
+  `<name> partes.3mf`, `<name> partes Bambu-Orca.3mf`, `<name> partes Prusa.3mf`, for the figure and its variants.
+- Printability (`print_check`, and the `repair`/`split` arguments of `result_export`; `engine/printable.py`):
+  `print_check` counts open edges, edges with more than two faces, neighbouring faces that walk their shared edge the
+  same way, repeated and empty faces, dust (under 20 faces and 0.02 % of the surface) and shells pointing inwards,
+  and lists the loose pieces (faces, shares, box, `on_plate`, `floating`: not the main piece and not on the plate).
+  With `repair` it also says what the repair leaves, without writing. The export repairs the surface first (setting
+  `repair`, on by default; only for the parts files, the other formats are written from the figure as it is): drops
+  empty and repeated faces and dust, makes the faces of every shell agree, turns inside-out shells round (a shell
+  inside another stays: a cavity), and closes every open rim with a fan around its centre, the new faces taking the
+  commonest colour around. Nothing is written back to the project. `split` writes every separate piece of the
+  figure as `<name> pieza N.stl` standing on z = 0 (only when it has more than one).
 - Studio (`static/`): library with photos and collection filter, projects, 3-D view with one colour per face, view
   modes, tools (orbit; piece bucket with the piece under the cursor lit, click fills and drag still orbits, Shift +
   click for the patch; patch bucket; brush sized in % of the figure; keys 1-9 choose the colour; Alt + click picker; undo), palette card,
@@ -92,7 +112,11 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
 - Split triangles along a colour border: borders follow the mesh's own triangles.
 - Carry material presets inside the 3MF (`export.write_3mf(project=True)` keeps an attempt OrcaSlicer rejects). The
   PrusaSlicer and standard-colour files have not been opened in their programs.
-- Cut the figure into closed solids per colour, or add a figure's loose pieces to the same file.
+- Cut the solids deeper than the skin: the inside is one colour. Add a figure's loose pieces to the same 3MF (they
+  are written as separate STL files with `split`). Close a large, curved hole faithfully: a rim is closed with a fan
+  around its centre, which suits flat bottoms and small holes and is only watertight, not sculpted, elsewhere.
+- Say how the slicers read the `extruder` of each part: the parts files were read back by 3MF libraries and OrcaSlicer
+  2.3.1 loads their parts, but they have not been opened in the slicers' windows or sliced.
 - Choose between several web pictures of a character (it takes the lead one of the page), or read reference models
   inside archives.
 - Keep undo steps after the app restarts.
@@ -101,6 +125,7 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
 ## Where things are
 
 - `nikias_hoard/engine/`: `mesh.py`, `regions.py`, `source.py`, `palette.py`, `labels.py`, `render.py`, `export.py`,
+  `export_parts.py`, `printable.py`, `solids.py`,
   `modelio.py`, `blender.py`, `blender_export.py`.
 - `nikias_hoard/director.py`, `references.py`, `llm.py`, `services.py`, `agent_tools.py`, `api/`, `static/`, `store.py`, `config.py`.
 - Data: `data/settings.json`, `data/projects/<id>/` (`project.json`, `mesh.npz`, `regions.npy`, `labels.npy`,

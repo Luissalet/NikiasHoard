@@ -19,8 +19,8 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import __version__, director
-from .config import Config, Settings
-from .engine import blender, export, labels as lab, mesh as meshes, modelio, palette as pal, regions as reg, render, source
+from .config import FORMATS, Config, Settings
+from .engine import blender, export, export_parts, labels as lab, mesh as meshes, modelio, palette as pal, printable, regions as reg, render, solids, source
 from .errors import NikiasError
 from .hoard_link.tokens import read_or_create_token
 from .llm import ModelClient
@@ -754,15 +754,71 @@ class Services:
         return render.sheet(imgs, names, columns=min(len(imgs), 3))
 
     # ------------------------------------------------------------------ export
-    def export(self, pid: str, formats: Optional[list[str]] = None, folder: str = "", variants: bool = True) -> dict[str, Any]:
+    @staticmethod
+    def _brief(report: dict[str, Any], pieces: int = 12) -> dict[str, Any]:
+        """The numbers of ``printable.inspect`` without a line for every loose piece (the largest ones only)."""
+        out = {k: v for k, v in report.items() if k != "pieces"}
+        out["piece_count"] = len(report["pieces"])
+        out["pieces"] = report["pieces"][:pieces]
+        return out
+
+    @staticmethod
+    def _advice(report: dict[str, Any]) -> list[str]:
+        """What the check means for printing, in the words of the page."""
+        out = []
+        if report["open_edges"]:
+            out.append(f"La superficie tiene {report['open_edges']} aristas abiertas: hay agujeros y el laminador puede rellenarlos mal.")
+        if report["non_manifold_edges"]:
+            out.append(f"{report['non_manifold_edges']} aristas unen más de dos caras: no es un sólido limpio.")
+        if report["flipped_edges"]:
+            out.append(f"{report['flipped_edges']} aristas tienen caras vecinas con la normal al revés.")
+        if report["inside_out_pieces"]:
+            n = report["inside_out_pieces"]
+            out.append("Una pieza tiene las normales hacia dentro." if n == 1 else f"{n} piezas tienen las normales hacia dentro.")
+        if report["degenerate_faces"] or report["duplicate_faces"]:
+            out.append(f"Hay {report['degenerate_faces']} caras sin área y {report['duplicate_faces']} repetidas.")
+        if report["specks"]:
+            n = len(report["specks"])
+            out.append("Una mota suelta, demasiado pequeña para imprimirse." if n == 1 else f"{n} motas sueltas, demasiado pequeñas para imprimirse.")
+        if report["floating_pieces"]:
+            n = len(report["floating_pieces"])
+            out.append("Una pieza suelta no toca la plataforma: se imprimiría en el aire." if n == 1
+                       else f"{n} piezas sueltas no tocan la plataforma: se imprimirían en el aire.")
+        return out or ["La superficie es un sólido cerrado y consistente."]
+
+    def print_check(self, pid: str, repair: bool = False) -> dict[str, Any]:
+        """Is the figure printable as it is? With ``repair`` also what the automatic repair would leave (nothing is written)."""
+        fig = self._figure(pid)
+        mesh = fig.mesh
+        before = printable.inspect(mesh.P, mesh.F)
+        out: dict[str, Any] = {"project_id": pid, "check": self._brief(before), "advice": self._advice(before)}
+        if repair:
+            P, F, L, actions = printable.repair(mesh.P, mesh.F, np.where(fig.labels == UNSET, 0, fig.labels))
+            after = printable.inspect(P, F)
+            out.update({"repair": actions, "after": self._brief(after), "advice_after": self._advice(after)})
+        return out
+
+    def _solids(self, mesh: meshes.Mesh, labels: np.ndarray, repair: bool, depth: float) -> tuple[list[tuple[int, np.ndarray, np.ndarray]], dict[str, Any]]:
+        """The figure as one closed solid per colour, repaired first when asked, and what was found and done."""
+        before = printable.inspect(mesh.P, mesh.F)
+        P, F, L, actions = (printable.repair(mesh.P, mesh.F, labels) if repair else (mesh.P, mesh.F, labels, {}))
+        parts, info = solids.split(P, F, L, depth)
+        found = [{"color": int(k) + 1, "faces": int(len(f)), "closed": bool(printable.inspect(p, f)["watertight"])} for k, (p, f) in sorted(parts.items())]
+        check = {"before": self._brief(before, 0), "repair": actions, "core": info["core"] + 1, "depth": round(info["depth"], 4), "solids": found}
+        return [(int(k), p, f) for k, (p, f) in sorted(parts.items())], check
+
+    def export(self, pid: str, formats: Optional[list[str]] = None, folder: str = "", variants: bool = True, repair: Optional[bool] = None,
+               split: bool = False, skin_depth: Optional[float] = None) -> dict[str, Any]:
         project = self.store.get(pid)
         fig = self._figure(pid)
         if not project["palette"]:
             raise NikiasError("invalid", "La figura todavía no tiene colores.", "Colorea con color_start o pinta con paint.")
         formats = [f.lower() for f in (formats or self.settings["export_formats"])]
-        bad = [f for f in formats if f not in ("bambu", "prusa", "color", "obj", "stl")]
+        bad = [f for f in formats if f not in FORMATS]
         if bad:
-            raise NikiasError("invalid", f"Formato desconocido: {bad[0]}.", "Formatos: bambu, prusa, color, obj, stl.")
+            raise NikiasError("invalid", f"Formato desconocido: {bad[0]}.", "Formatos: " + ", ".join(FORMATS) + ".")
+        repair = self.settings["repair"] if repair is None else bool(repair)
+        depth = float(self.settings["skin_depth"] if skin_depth is None else skin_depth) / 100.0
         src = Path(project["source"]["path"])
         out_dir = Path(folder) if folder else (Path(self.settings["export_dir"]) / project["source"].get("group", "") if self.settings["export_dir"]
                                                else src.parent / "Multicolor")
@@ -773,8 +829,11 @@ class Services:
         entries = [{"hex": c["hex"], "name": _name_of(c), "material": "PLA"} for c in project["palette"]]
         unset = int((fig.labels == UNSET).sum())
         files: list[str] = []
+        printability: list[dict[str, Any]] = []
+        piece_files: list[str] = []
+        wanted_parts = [f for f in formats if f in export_parts.PART_DIALECTS]
 
-        def write(stem: str, mesh: meshes.Mesh, labels: np.ndarray) -> None:
+        def write(stem: str, mesh: meshes.Mesh, labels: np.ndarray, main: bool = False) -> None:
             labels = np.where(labels == UNSET, 0, labels)
             for f in formats:
                 if f in export.DIALECTS:
@@ -782,10 +841,30 @@ class Services:
                     files.append(str(export.write_3mf(out_dir / f"{stem} {suffix}.3mf", mesh.P, mesh.F, labels, entries, stem, f)))
                 elif f == "obj":
                     files.extend(str(x) for x in export.write_obj(out_dir / f"{stem} color.obj", mesh.P, mesh.F, labels, entries, stem))
-                else:
+                elif f == "stl":
                     files.extend(str(x) for x in export.write_color_stls(out_dir, stem, mesh.P, mesh.F, labels, entries))
+            if wanted_parts:
+                try:
+                    parts, check = self._solids(mesh, labels, repair, depth)
+                    suffix = {"parts": "partes", "parts-bambu": "partes Bambu-Orca", "parts-prusa": "partes Prusa"}
+                    for f in wanted_parts:
+                        files.append(str(export_parts.write_parts_3mf(out_dir / f"{stem} {suffix[f]}.3mf", parts, entries, stem, f)))
+                    printability.append({"name": stem, **check})
+                except Exception as exc:                      # one figure's solids failing must not lose the other files
+                    log.exception("solids of %s", stem)
+                    printability.append({"name": stem, "error": str(exc)[:300]})
+            if split and main:
+                P, F = (printable.repair(mesh.P, mesh.F, labels)[:2] if repair else (mesh.P, mesh.F))
+                shell = printable.shells(F.astype(np.int64), len(P))
+                big = [s for s in np.unique(shell) if int((shell == s).sum()) >= printable.SPECK_FACES]
+                for s in (big if len(big) > 1 else []):
+                    piece, pf = printable.compact(P, F[shell == s].astype(np.int64))
+                    path = out_dir / f"{stem} pieza {len(piece_files) + 1}.stl"
+                    meshes.write_stl(path, piece - np.array([0.0, 0.0, piece[:, 2].min()]), pf)
+                    piece_files.append(str(path))
 
-        write(src.stem, fig.mesh, fig.labels)
+        write(src.stem, fig.mesh, fig.labels, main=True)
+        files.extend(piece_files)
         done_variants, failed = [], []
         if variants:
             tree = None
@@ -818,6 +897,7 @@ class Services:
         project["exports"] = [{"when": time.time(), "folder": str(out_dir), "files": [Path(f).name for f in files]}] + project.get("exports", [])[:4]
         self.store.save(project)
         return {"folder": str(out_dir), "files": files, "variants": done_variants, "variants_failed": failed, "uncolored_faces": unset,
+                "printability": printability, "pieces": [Path(f).name for f in piece_files],
                 "note": "Las caras sin colorear salen con el color 1." if unset else ""}
 
     @staticmethod

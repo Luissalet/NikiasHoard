@@ -38,9 +38,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "wikis": {},                 # words of a collection's name -> the wiki where its characters are looked up (adds to the built-in ones)
     "director_rounds": 2,        # times the model may look at its colouring and correct it
     "export_dir": "",            # empty: a "Multicolor" folder next to each figure
-    "export_formats": ["bambu", "prusa", "color"],
+    "export_formats": ["bambu", "prusa", "color", "parts", "parts-bambu", "parts-prusa"],
+    "skin_depth": 2.0,           # how deep the colour of a one-solid-per-colour file goes, in % of the figure's size (thinner where the figure is)
+    "repair": True,              # close, orient and clean the surface before writing the one-solid-per-colour files
 }
-FORMATS = ("bambu", "prusa", "color", "obj", "stl")
+FORMATS = ("bambu", "prusa", "color", "obj", "stl", "parts", "parts-bambu", "parts-prusa")
 
 
 @dataclass
@@ -166,6 +168,8 @@ def normalize(data: dict[str, Any]) -> dict[str, Any]:
     data["llm_timeout_s"] = _clamp(data["llm_timeout_s"], 30, 14400, int)
     data["director_rounds"] = _clamp(data["director_rounds"], 0, 6, int)
     data["export_dir"] = str(data.get("export_dir") or "").strip()
+    data["skin_depth"] = _clamp(data["skin_depth"], 0.2, 20)
+    data["repair"] = bool(data.get("repair", True))
     formats = data.get("export_formats") or []
     if isinstance(formats, str):
         formats = formats.split(",")
