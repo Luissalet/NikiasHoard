@@ -76,6 +76,8 @@ figure colours the same at any scale.
 
 ## Connection with Faustus and Hoard Hub
 
+Declares its production handoff from closed print mesh to coloured 3MF so a planner can put the slicer check after colouring.
+
 `faustus-plugin.json` (id `nikias`) registers the app as a Faustus plugin: Hoard Hub starts it on demand on port 5252
 and checks `/api/health`. The same operations the buttons use are available to assistants through MCP
 (`mcp_server.py`, stdio); `figure_look` and `source_look` return pictures.
