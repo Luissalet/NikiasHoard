@@ -96,12 +96,14 @@
     "slugs": [
       "blender-asset-production",
       "web-3d-asset-pipeline",
-      "verification-loop"
+      "verification-loop",
+      "studio-nikias-print-color",
+      "studio-figure-print-and-slice"
     ],
     "tags": [
       "3d",
       "print"
     ],
-    "limit": 4
+    "limit": 6
   }
 }
