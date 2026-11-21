@@ -126,6 +126,9 @@ def test_colour_from_a_textured_model(client):
     p = call(client, "project_get", project_id=pid)
     assert [c["name"] for c in p["palette"]] == ["rojo", "amarillo", "azul"]
     assert p["colored_share"] == 1 and [c["patches"] for c in p["colors"]] == [1, 1, 1]
+    reference_colors = p["transfer"]["reference_colors"]
+    assert reference_colors == job["result"]["reference_colors"]
+    assert len(reference_colors) == 3 and all(c["retained"] for c in reference_colors)
     assert 0.5 < p["colors"][0]["share"] < 0.65
     rows = call(client, "regions_set", project_id=pid)["regions"]
     assert [r["color"] for r in rows] == [0, 1, 2]
@@ -420,3 +423,16 @@ def test_references_go_to_the_model_one_by_one_with_the_users_own_first(client):
     client.svc.add_image(pid, "mia la ultima", picture((0, 255, 0)))
     got = [Image.open(io.BytesIO(b)).convert("RGB").getpixel((5, 5)) for b in client.svc.reference_pictures(pid)]
     assert got == [(0, 255, 0), (255, 0, 0), (0, 0, 255)] and web["id"]        # newest of the user's first, the looked-up one last
+
+
+def test_reference_colour_without_output_faces_is_reported():
+    import numpy as np
+    from nikias_hoard.engine.palette import reference_coverage
+
+    ochre, slate = [190, 135, 45], [52, 64, 80]
+    source = np.array([ochre, ochre, slate])
+    palette = np.array([ochre, slate])
+    report = reference_coverage(source, palette, np.array([1, 1]), np.array([1, 1]), 0.6)
+    assert report[0]["source"] == "#be872d"
+    assert not report[0]["retained"] and set(report[0]["reason"]) == {"en", "es"}
+    assert report[1]["retained"] and report[1]["output_share"] == 1.0

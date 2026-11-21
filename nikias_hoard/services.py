@@ -371,13 +371,13 @@ class Services:
         pts, rgb = source.sample_scene(scene, self.settings["samples"])
         if len(pts) < 100:
             raise NikiasError("invalid", "El modelo no tiene superficie con color.")
-        fit = source.register(pts, fig.mesh)
+        fit = source.register(pts, fig.mesh, source_bounds=(scene.P.min(0), scene.P.max(0)))
         moved = source.apply(fit["matrix"], pts)
         np.savez(d / f"src_{sid}.npz", points=moved.astype(np.float32), rgb=rgb)
         textures = sum(1 for m in scene.materials if m.albedo is not None)
         good = fit["fit"] <= float(self.settings["fit_good"])
         entry = {"id": sid, "kind": "model", "name": name or p.stem, "path": str(p), "fit": fit["fit"], "fit_p90": fit["fit_p90"], "good": good,
-                 "textures": textures, "materials": len(scene.materials),
+                 "textures": textures, "materials": len(scene.materials), "alignment": fit["alignment"],
                  "note": "" if good else "La forma no coincide con la figura (otra pose u otro modelo): sirve de referencia para la IA, no para pasar el color directamente."}
         render.png_file(render.sheet([render.points_image(moved, rgb, yaw=y, pitch=p_, size=520) for y, p_ in ((0, 10), (90, 10), (180, 10), (-90, 10))]),
                         d / f"src_{sid}.png")
@@ -518,15 +518,17 @@ class Services:
         fig.labels = pal.assign(face_rgb, colors)
         say("limpiando bordes e islas", 0.8)
         cleaned = self._clean(fig, s["min_patch"], s["smooth"])
+        coverage = pal.reference_coverage(rgb, colors, fig.labels, fig.mesh.areas, s["accent"])
         project = self.store.get(pid)
         project["palette"] = self._palette_entries(colors)
         project["method"] = "model"
         project["transfer"] = {"source": src["id"], "fit": src["fit"], "good": bool(src.get("good")), "suggested_colors": suggestion["count"],
-                               "errors": suggestion["errors"], "far_share": round(float((gap > fig.mesh.diagonal * 0.03).mean()), 4), **cleaned}
+                               "errors": suggestion["errors"], "far_share": round(float((gap > fig.mesh.diagonal * 0.03).mean()), 4),
+                               "reference_colors": coverage, **cleaned}
         self.store.save(project)
         self._save_labels(pid, fig)
         return {"method": "model", "source": src["name"], "fit": src["fit"], "trusted": bool(src.get("good")), "colors": len(colors),
-                "suggested_colors": suggestion["count"], **cleaned}
+                "suggested_colors": suggestion["count"], "reference_colors": coverage, **cleaned}
 
     def _palette_entries(self, colors) -> list[dict[str, Any]]:
         return [{"hex": pal.to_hex(rgb), "name": pal.name_of(rgb)} for rgb in np.asarray(colors).reshape(-1, 3)]
