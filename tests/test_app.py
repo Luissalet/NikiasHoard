@@ -3,6 +3,7 @@ export and the agent tools. The vision model is a stand-in that answers like one
 
 from __future__ import annotations
 
+from io import BytesIO
 import zipfile
 
 import numpy as np
@@ -283,6 +284,11 @@ def test_export_writes_the_figure_and_its_variants(client):
     assert len(one["files"]) == 2 + 2 + 1
     r = client.get(f"/api/projects/{pid}/download/prusa")
     assert r.status_code == 200 and "Amy%20Prusa.3mf" in r.headers["content-disposition"] and r.content[:2] == b"PK"
+    r = client.get(f"/api/projects/{pid}/download/orca")
+    assert r.status_code == 200 and "Amy%20OrcaSlicer.3mf" in r.headers["content-disposition"]
+    with zipfile.ZipFile(BytesIO(r.content)) as model:
+        assert b'<metadata name="Application">Nikias\'s Hoard</metadata>' in model.read("3D/3dmodel.model")
+        assert b'paint_color="8"' in model.read("3D/Objects/object_1.model")
 
 
 def two_pieces_with_a_hole(client):

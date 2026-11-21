@@ -1,6 +1,6 @@
 """Reading a painted 3MF back: the mesh, the filament of each triangle and the palette.
 
-The three dialects ``export.write_3mf`` writes are read: a Bambu Studio / OrcaSlicer project (the mesh in
+The dialects ``export.write_3mf`` writes are read: a Bambu Studio / OrcaSlicer project or painted model (the mesh in
 ``3D/Objects/*.model``, pointed at by ``p:path``, with ``paint_color`` on each triangle), PrusaSlicer
 (``slic3rpe:mmu_segmentation``) and the 3MF materials extension (a colour group with ``pid``/``p1``). The XML is read
 in streaming, so a figure of 800.000 triangles is never held as a tree.
@@ -163,14 +163,17 @@ def _main_model(z: zipfile.ZipFile, names: set[str]) -> str:
 
 
 def _dialect(top: dict[str, Any], kinds: set, pids: list) -> str:
-    """Which of the three dialects the file is written in."""
+    """Which dialect the file is written in."""
+    meta = top["meta"]
+    if meta.get("Application") == "Nikias's Hoard" and "nikias:PaintedSlots" in meta:
+        return "orca"
     if "paint" in kinds:
         return "bambu"
     if "mmu" in kinds:
         return "prusa"
     if any(p is not None for p in pids):
         return "color"
-    meta = top["meta"]                                   # nothing painted: the marks the writer left
+    # Nothing painted: use the marks the writer left.
     if any(name.startswith("BambuStudio") for name in meta):
         return "bambu"
     if any(name.startswith("slic3rpe:") for name in meta):

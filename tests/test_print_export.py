@@ -24,6 +24,13 @@ def test_painted_export_records_only_slots_assigned_to_triangles(tmp_path):
         ]
         part = ET.fromstring(package.read("3D/Objects/object_1.model"))
         assert [row.get("paint_color") for row in part.findall(".//m:triangle", ns)] == [None, "0C", "0C", "0C"]
+    model = export.write_3mf(tmp_path / "model.3mf", vertices, faces, labels, palette, "Figure", "orca")
+    with ZipFile(model) as package, ZipFile(painted) as source:
+        assert package.namelist() == source.namelist()
+        for item in source.namelist():
+            original = source.read(item)
+            expected = original.replace(export.BAMBU_APP.encode(), b"Nikias's Hoard", 1) if item == "3D/3dmodel.model" else original
+            assert package.read(item) == expected
     standard = export.write_3mf(tmp_path / "standard.3mf", vertices, faces, labels, palette, "Figure", "color")
     with ZipFile(standard) as package:
         main = ET.fromstring(package.read("3D/3dmodel.model"))

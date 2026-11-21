@@ -54,7 +54,7 @@ def test_a_written_figure_comes_back_with_its_faces_and_colours(tmp_path, figure
     assert back["P"].shape == (len(figure.P), 3) and back["F"].shape == (len(figure.F), 3)
     assert (back["F"] == figure.F).all()
     expected = _standing(figure.P)
-    if dialect == "bambu":                       # a project: the mesh sits on its own origin and the build item places it
+    if dialect in ("bambu", "orca"):              # the build item places the component mesh on the plate
         expected = expected + np.array([*export.PLATE_CENTRE, 0.0])
     assert np.abs(back["P"] - expected).max() < 2e-3
     assert (back["labels"] == labels).all()

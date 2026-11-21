@@ -60,7 +60,8 @@ proporción a ella, así que se colorea igual a cualquier escala.
   figura (1,2 % por defecto) se unen a lo que las rodea. Cada color muestra su parte de la superficie y sus manchas.
 - **Vistas**: color, regiones y arcilla, en la vista 3D y como imágenes desde cualquier lado o
   ampliadas sobre un punto (sombreadas con la geometría, así que las líneas grabadas se ven como se imprimirán).
-- **Exportar**: un 3MF pintado para Bambu Studio / OrcaSlicer, otro para PrusaSlicer, un 3MF de color estándar, un
+- **Exportar**: un 3MF pintado para Bambu Studio / OrcaSlicer, un modelo pintado para laminar con perfiles externos,
+  otro para PrusaSlicer, un 3MF de color estándar, un
   OBJ con un material por color, un STL por color y un texto con la lista de colores. Las variantes flat
   y pivot de la figura toman sus colores y se escriben con ella. Los archivos van a una carpeta `Multicolor` junto a
   la figura, o a la carpeta que se indique.
