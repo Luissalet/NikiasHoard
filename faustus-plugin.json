@@ -28,7 +28,7 @@
     },
     "production": {
       "handoffs": [
-        {"accepts": "closed-print-mesh", "produces": ["coloured-3mf"], "skill": "blender-asset-production", "check": {"en": "Open the 3MF in a slicer and check the colour regions, supports and reported geometry.", "es": "Abre el 3MF en el laminador y comprueba las zonas de color, los soportes y los avisos de geometría."}}
+        {"accepts": "closed-print-mesh", "produces": ["coloured-3mf"], "skill": "studio-nikias-print-color", "check": {"en": "Check the colour regions, supports and geometry. For multiple filaments, export the painted orca 3MF and verify deposited colours with hub_print_slice and profiles in palette order. For one filament, use a standard one-colour 3MF.", "es": "Comprueba las zonas de color, los soportes y la geometría. Para varios filamentos, exporta el 3MF pintado orca y comprueba los colores depositados con hub_print_slice y los perfiles en orden de paleta. Para un filamento, usa un 3MF estándar de un color."}}
       ]
     },
     "copilot": true

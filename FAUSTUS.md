@@ -6,9 +6,11 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
 ## Can
 
 - Skills shelf (`hoard_link/skills.py`, wired in `api/agent.py`): the `skills` block of `faustus-plugin.json` names the
-  library skills this app wants (`blender-asset-production`, `web-3d-asset-pipeline`, `verification-loop`, plus the
-  closest by the tags `3d` and `print`, 4 at most). They are copied to `data/skills/`, appended to the agent
-  instructions, served by the skills tools of the agent router and shown on the page behind the "Skills" button.
+  library skills this app wants, including `studio-nikias-print-color` and `studio-figure-print-and-slice`.
+  The closed-mesh handoff points to `studio-nikias-print-color`. The shelf also carries the general asset and
+  verification skills and fills spare slots by the `3d` and `print` tags, up to six skills. They are copied
+  to `data/skills/`, appended to the agent instructions, served by the skills tools of the agent router and
+  shown on the page behind the "Skills" button.
 - Library (`library_scan`): walks `library_dirs` for STL files, grouped by folder (`group` is the path inside the
   library folder). `<name> <suffix>.stl` with a suffix of `variant_suffixes` (flat, pivot) is a variant of `<name>`;
   with one of `part_suffixes` (base), or any other `<name> <words>.stl` that has no variants of its own, a loose
