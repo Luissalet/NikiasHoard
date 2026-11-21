@@ -245,7 +245,7 @@ TOOLS = [
          ann(draft_safe=True), lambda s, a: s.clean(a.project_id, a.min_patch, a.smooth), timeout_s=300),
     Tool("figure_look", _d("See the figure: clay, numbered regions, colours, or clay next to colour; any view or a close-up.",
                            synonyms="ver figura, render, comparar"), LookArgs, ann(read_only=True), _look, timeout_s=300, capped=False),
-    Tool("result_export", _d("Write the painted files (3MF for Bambu Studio/OrcaSlicer and PrusaSlicer, standard-colour 3MF, OBJ), the multicolour 3MF with one closed solid per colour, and the list of colours.",
+    Tool("result_export", _d("Write painted 3MF, standard-colour 3MF, OBJ, solid colour parts and the palette. Use formats=['bambu'] for Hub slicing with filament presets in palette order.",
                              synonyms="exportar, 3MF, multicolor, guardar"), ExportArgs, ann(draft_safe=True),
          lambda s, a: s.export(a.project_id, a.formats, a.folder, a.variants, a.repair, a.split, a.skin_depth), timeout_s=900),
     Tool("print_check", _d("Is the figure printable as it is: open edges, edges shared by more than two faces, faces turned the wrong way, shells pointing inwards, "

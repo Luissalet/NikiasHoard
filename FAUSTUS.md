@@ -85,6 +85,9 @@ return MCP images). Connector preset: its own `faustus-plugin.json`.
   `parts-bambu` is the layout Bambu Studio / OrcaSlicer save for an object with parts, each part with `extruder` =
   palette index + 1; `parts-prusa` is one object whose volumes are the solids, each with its extruder. Files
   `<name> partes.3mf`, `<name> partes Bambu-Orca.3mf`, `<name> partes Prusa.3mf`, for the figure and its variants.
+- For Hub slicing, export `formats=["bambu"]` and supply the filament presets in palette order. The Bambu-Orca
+  3MF has the slicer's native triangle painting and records the slots, RGB colours and face counts that the
+  figure actually uses. The standard `color` 3MF still carries colour groups for interchange.
 - Printability (`print_check`, and the `repair`/`split` arguments of `result_export`; `engine/printable.py`):
   `print_check` counts open edges, edges with more than two faces, neighbouring faces that walk their shared edge the
   same way, repeated and empty faces, dust (under 20 faces and 0.02 % of the surface) and shells pointing inwards,
