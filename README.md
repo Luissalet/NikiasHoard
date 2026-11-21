@@ -27,7 +27,7 @@ figure colours the same at any scale.
   when their line has breaks. Two small pieces that this closing separates with nothing engraved between them (the
   white of an eye pinched between its lid and its iris) become one piece again. Detail 1-5 goes from big parts to every engraved line (4 by default). Regions are what
   gets a colour, by the model or by a click.
-- **Colour from a textured model**: add the game model or the `.blend` the figure was posed in (OBJ, GLB, glTF, DAE;
+- **Colour from a textured model**: add the game model or the `.blend` the figure was posed in (OBJ, GLB, glTF, DAE; Model transfer reports the dominant reference colours and checks them against the palette entries that cover the resulting surface.
   FBX and `.blend` through Blender, with the saved pose applied). It is laid over the figure by itself, whatever its
   units and orientation, and the fit is measured. When the shapes agree, each face takes the colour the texture has
   at the nearest point, and the colours are reduced to the print palette. When they do not (another pose), the model

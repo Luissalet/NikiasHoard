@@ -66,6 +66,19 @@ def test_model_is_laid_over_the_figure_whatever_its_units_and_turn(figure):
     assert float(np.median(gap)) < 0.5
 
 
+def test_shared_axes_keep_pose_colour_after_scaling_and_grounding(figure):
+    scene = shapes.textured(scale=0.031, shift=(3, -2, 8))
+    pts, rgb = source.sample_scene(scene, 150_000)
+    fit = source.register(pts, figure, source_bounds=(scene.P.min(0), scene.P.max(0)))
+    assert fit["alignment"] == "shared_axes"
+    assert fit["fit_p90"] < 0.005
+    face_rgb, _ = source.transfer(figure, source.apply(fit["matrix"], pts), rgb)
+    colors = pal.reduce(face_rgb, figure.areas, 3)
+    labels = pal.assign(face_rgb, colors)
+    want = pal.assign(shapes.COLORS[shapes.ball_of(figure)], colors)
+    assert (figure.areas * (labels == want)).sum() / figure.areas.sum() > 0.97
+
+
 def test_a_different_shape_fits_badly(figure):
     rng = np.random.default_rng(0)
     box = rng.uniform(-1, 1, (40_000, 3)) * [30, 4, 4]

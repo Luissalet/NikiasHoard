@@ -150,3 +150,32 @@ def suggest_count(rgb: np.ndarray, weight: np.ndarray, lo: int = 2, hi: int = 8,
             break
     return {"count": best, "errors": errs, "left_out_share": left}
 
+
+
+def reference_coverage(rgb: np.ndarray, colors: np.ndarray, labels: np.ndarray, areas: np.ndarray,
+                       accent: float) -> list[dict[str, Any]]:
+    """Compare dominant source colours with the palette entries that actually cover the output."""
+    # Source samples are spread over the surface. Use the same Lab tolerance as suggest_count.
+    source_colors = reduce(rgb, k=8, accent=accent)
+    source_share = np.bincount(assign(rgb, source_colors), minlength=len(source_colors)) / len(rgb)
+    used = labels < len(colors)
+    output_share = np.bincount(labels[used], weights=areas[used], minlength=len(colors)) / areas.sum()
+    available = np.flatnonzero(output_share > 0)
+    result = []
+    for color, fraction in zip(source_colors, source_share):
+        if fraction < 0.01:
+            continue
+        nearest = min(available, key=lambda index: distance(color, colors[index])) if len(available) else None
+        delta = distance(color, colors[nearest]) if nearest is not None else None
+        retained = delta is not None and delta <= 22
+        result.append({
+            "source": to_hex(color), "source_share": round(float(fraction), 4), "retained": retained,
+            "nearest": to_hex(colors[nearest]) if nearest is not None else None,
+            "output_share": round(float(output_share[nearest]), 4) if nearest is not None else 0,
+            "delta_e": round(delta, 2) if delta is not None else None,
+            "reason": None if retained else {
+                "en": "No matching colour remains on the exported surface after transfer, palette reduction and cleanup.",
+                "es": "Tras transferir, reducir la paleta y limpiar, no queda un color equivalente en la superficie de salida.",
+            },
+        })
+    return result

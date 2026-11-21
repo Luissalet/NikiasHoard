@@ -27,7 +27,7 @@ proporción a ella, así que se colorea igual a cualquier escala.
   regiones propias aunque su línea tenga cortes. Dos trozos pequeños que ese cierre separa sin que haya nada grabado
   entre ellos (el blanco de un ojo pellizcado entre el párpado y el iris) vuelven a ser una pieza. El detalle 1-5 va de partes grandes a cada línea grabada (4 por
   defecto). Las regiones son lo que recibe color, del modelo o de un clic.
-- **Color desde un modelo con texturas**: se añade el modelo del juego o el `.blend` donde se posó la figura (OBJ,
+- **Color desde un modelo con texturas**: se añade el modelo del juego o el `.blend` donde se posó la figura (OBJ, La transferencia desde un modelo indica los colores dominantes de la referencia y los coteja con los tonos de la paleta que cubren la superficie resultante.
   GLB, glTF, DAE; FBX y `.blend` a través de Blender, con la pose guardada aplicada). Se coloca solo sobre la figura,
   tenga las unidades y la orientación que tenga, y se mide el encaje. Si las formas coinciden, cada cara toma el
   color que la textura tiene en el punto más cercano y los colores se reducen a la paleta de impresión. Si no (otra

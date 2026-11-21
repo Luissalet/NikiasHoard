@@ -99,12 +99,31 @@ def _icp(src: np.ndarray, tree: cKDTree, dst: np.ndarray, s: float, R: np.ndarra
     return s, R, t, err
 
 
-def register(src_points: np.ndarray, mesh: Mesh, seed: int = 11) -> dict[str, Any]:
+def register(src_points: np.ndarray, mesh: Mesh, seed: int = 11,
+             source_bounds: tuple[np.ndarray, np.ndarray] | None = None) -> dict[str, Any]:
     """Where the model's points go to lie on the figure. ``matrix`` 4x4, ``fit`` = typical gap as a share of the
     figure's diagonal (under 0.01 the shapes agree; over 0.03 it is another pose or another figure)."""
     rng = np.random.default_rng(seed)
     dst_all = mesh.centroids
     dst = dst_all[rng.choice(len(dst_all), min(len(dst_all), 20_000), replace=False)]
+    diag = max(mesh.diagonal, 1e-9)
+    if source_bounds is not None:
+        source_min, source_max = source_bounds
+        target_min, target_max = mesh.P.min(0), mesh.P.max(0)
+        src_extent, dst_extent = source_max - source_min, target_max - target_min
+        scale = dst_extent.max() / max(src_extent.max(), 1e-9)
+        # A print export can preserve the pose axes and just scale and ground it. Keep that
+        # registration when both the proportions and the surface agree.
+        if abs(src_extent * scale - dst_extent).max() < diag * 0.01:
+            offset = (target_min + target_max - scale * (source_min + source_max)) / 2
+            gap = cKDTree(src_points * scale + offset).query(dst)[0] / diag
+            fit_p90 = float(np.quantile(gap, 0.9))
+            if fit_p90 < 0.005:
+                matrix = np.eye(4)
+                matrix[:3, :3] *= scale
+                matrix[:3, 3] = offset
+                return {"matrix": matrix.tolist(), "scale": round(float(scale), 6), "alignment": "shared_axes",
+                        "fit": round(float(np.median(gap)), 5), "fit_p90": round(fit_p90, 5)}
     src = src_points[rng.choice(len(src_points), min(len(src_points), 20_000), replace=False)]
     cs, cd = src.mean(0), dst.mean(0)
     rs = float(np.sqrt(((src - cs) ** 2).sum(1).mean()))
@@ -112,7 +131,6 @@ def register(src_points: np.ndarray, mesh: Mesh, seed: int = 11) -> dict[str, An
     tree = cKDTree(dst)
     coarse_src, coarse_dst = src[:3000], dst[:3000]
     coarse_tree = cKDTree(coarse_dst)
-    src_tree_pts = None
     best = None
     for R0 in _rotations():
         s0 = rd / max(rs, 1e-30)
@@ -130,8 +148,8 @@ def register(src_points: np.ndarray, mesh: Mesh, seed: int = 11) -> dict[str, An
     gap = cKDTree(moved).query(dst)[0]                      # how far the figure's surface is from the model
     M = np.eye(4)
     M[:3, :3], M[:3, 3] = s * R, t
-    diag = max(mesh.diagonal, 1e-9)
-    return {"matrix": M.tolist(), "scale": round(s, 6), "fit": round(float(np.median(gap)) / diag, 5),
+    return {"matrix": M.tolist(), "scale": round(s, 6), "alignment": "icp",
+            "fit": round(float(np.median(gap)) / diag, 5),
             "fit_p90": round(float(np.quantile(gap, 0.9)) / diag, 5)}
 
 
