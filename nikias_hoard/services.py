@@ -839,7 +839,7 @@ class Services:
             labels = np.where(labels == UNSET, 0, labels)
             for f in formats:
                 if f in export.DIALECTS:
-                    suffix = {"bambu": "Bambu-Orca", "prusa": "Prusa", "color": "color"}[f]
+                    suffix = {"bambu": "Bambu-Orca", "orca": "OrcaSlicer", "prusa": "Prusa", "color": "color"}[f]
                     files.append(str(export.write_3mf(out_dir / f"{stem} {suffix}.3mf", mesh.P, mesh.F, labels, entries, stem, f)))
                 elif f == "obj":
                     files.extend(str(x) for x in export.write_obj(out_dir / f"{stem} color.obj", mesh.P, mesh.F, labels, entries, stem))

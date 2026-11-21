@@ -478,7 +478,8 @@ async function startColor(mode) {
 
 async function exportDialog() {
   const p = state.project, s = state.settings || (state.settings = await call('settings_get'));
-  const kinds = [['bambu', '3MF pintado para Bambu Studio / OrcaSlicer'], ['prusa', '3MF pintado para PrusaSlicer'], ['color', '3MF de color estándar'], ['obj', 'OBJ con un material por color'], ['stl', 'Un STL por color (superficies, para guías de pintura)'],
+  const slicingLabel = navigator.language.startsWith('en') ? 'Painted 3MF for slicing with external presets' : '3MF pintado para laminar con perfiles externos';
+  const kinds = [['bambu', '3MF pintado para Bambu Studio / OrcaSlicer'], ['orca', slicingLabel], ['prusa', '3MF pintado para PrusaSlicer'], ['color', '3MF de color estándar'], ['obj', 'OBJ con un material por color'], ['stl', 'Un STL por color (superficies, para guías de pintura)'],
     ['parts-bambu', '3MF con un sólido cerrado por color, como piezas de un objeto de Bambu Studio / OrcaSlicer'], ['parts-prusa', '3MF con un sólido cerrado por color, como volúmenes de un objeto de PrusaSlicer'],
     ['parts', '3MF estándar con un sólido cerrado por color']];
   const boxes = kinds.map(([k, label]) => el('label', { class: 'check' }, el('input', { type: 'checkbox', value: k, checked: s.export_formats.includes(k) }), el('span', { text: label })));

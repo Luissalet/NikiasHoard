@@ -142,8 +142,9 @@ class LookArgs(ProjectId):
 
 
 class ExportArgs(ProjectId):
-    formats: Optional[list[Literal["bambu", "prusa", "color", "obj", "stl", "parts", "parts-bambu", "parts-prusa"]]] = Field(
-        None, description="bambu: painted 3MF for Bambu Studio / OrcaSlicer. prusa: painted 3MF for PrusaSlicer. color: standard-colour 3MF. obj: OBJ + MTL. "
+    formats: Optional[list[Literal["bambu", "orca", "prusa", "color", "obj", "stl", "parts", "parts-bambu", "parts-prusa"]]] = Field(
+        None, description="bambu: painted project 3MF. orca: painted 3MF for Hub slicing with external presets. "
+        "prusa: painted 3MF for PrusaSlicer. color: standard-colour 3MF. obj: OBJ + MTL. "
         "stl: one STL per colour (open surfaces, for painting guides). parts: multicolour 3MF with one closed solid per colour as its own mesh object "
         "(standard 3MF). parts-bambu / parts-prusa: the same solids as the parts of one object in Bambu Studio / OrcaSlicer or PrusaSlicer, each with the "
         "filament of its colour. Default: the setting export_formats.")
@@ -245,7 +246,7 @@ TOOLS = [
          ann(draft_safe=True), lambda s, a: s.clean(a.project_id, a.min_patch, a.smooth), timeout_s=300),
     Tool("figure_look", _d("See the figure: clay, numbered regions, colours, or clay next to colour; any view or a close-up.",
                            synonyms="ver figura, render, comparar"), LookArgs, ann(read_only=True), _look, timeout_s=300, capped=False),
-    Tool("result_export", _d("Write the painted files (3MF for Bambu Studio/OrcaSlicer and PrusaSlicer, standard-colour 3MF, OBJ), the multicolour 3MF with one closed solid per colour, and the list of colours.",
+    Tool("result_export", _d("Write painted 3MF, standard-colour 3MF, OBJ, solid colour parts and the palette. Use formats=['orca'] for Hub slicing with filament presets in palette order.",
                              synonyms="exportar, 3MF, multicolor, guardar"), ExportArgs, ann(draft_safe=True),
          lambda s, a: s.export(a.project_id, a.formats, a.folder, a.variants, a.repair, a.split, a.skin_depth), timeout_s=900),
     Tool("print_check", _d("Is the figure printable as it is: open edges, edges shared by more than two faces, faces turned the wrong way, shells pointing inwards, "

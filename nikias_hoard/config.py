@@ -42,7 +42,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "skin_depth": 2.0,           # how deep the colour of a one-solid-per-colour file goes, in % of the figure's size (thinner where the figure is)
     "repair": True,              # close, orient and clean the surface before writing the one-solid-per-colour files
 }
-FORMATS = ("bambu", "prusa", "color", "obj", "stl", "parts", "parts-bambu", "parts-prusa")
+FORMATS = ("bambu", "orca", "prusa", "color", "obj", "stl", "parts", "parts-bambu", "parts-prusa")
 
 
 @dataclass

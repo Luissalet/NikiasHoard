@@ -59,7 +59,8 @@ figure colours the same at any scale.
   size (1.2 % by default) join their surroundings, so no speckle reaches the slicer. Each colour shows its share of the surface and its patches.
 - **Views**: colour, regions and clay, in the 3-D view and as pictures from any side or zoomed on
   a spot (shaded from the geometry, so engraved lines read as they will print).
-- **Export**: a painted 3MF for Bambu Studio / OrcaSlicer, one for PrusaSlicer, a standard-colour 3MF, an OBJ with
+- **Export**: a painted 3MF for Bambu Studio / OrcaSlicer, a painted model for slicing with external presets,
+  one for PrusaSlicer, a standard-colour 3MF, an OBJ with
   one material per colour, one STL per colour, and a text file listing the colours. The figure's flat and
   pivot variants take the colours from the figure and are written with it. Files go to a `Multicolor` folder next
   to the figure, or to the folder you set.

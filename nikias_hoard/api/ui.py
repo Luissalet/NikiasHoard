@@ -85,8 +85,8 @@ def download(request: Request, pid: str, fmt: str):
     """One export written to the data folder and sent to the browser."""
     svc = services(request)
     project = svc.store.get(pid)
-    if fmt not in ("bambu", "prusa", "color", "parts", "parts-bambu", "parts-prusa"):
-        raise NikiasError("not_found", "Formatos de descarga: bambu, prusa, color, parts, parts-bambu, parts-prusa.")
+    if fmt not in ("bambu", "orca", "prusa", "color", "parts", "parts-bambu", "parts-prusa"):
+        raise NikiasError("not_found", "Formatos de descarga: bambu, orca, prusa, color, parts, parts-bambu, parts-prusa.")
     folder = svc.store.dir(pid) / "download"
     out = svc.export(pid, [fmt], str(folder), variants=False)
     path = next(f for f in out["files"] if f.endswith(".3mf"))

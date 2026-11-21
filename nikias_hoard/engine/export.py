@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -34,8 +35,9 @@ CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 MATERIAL_NS = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02"
 SLIC3R_NS = "http://schemas.slic3r.org/3mf/2017/06"
 BAMBU_NS = "http://schemas.bambulab.com/package/2021"
+PRINT_COLOUR_NS = "urn:nikias-hoard:print-colour:1"
 
-DIALECTS = ("bambu", "prusa", "color")
+DIALECTS = ("bambu", "orca", "prusa", "color")
 
 
 def paint_code(filament: int) -> str:
@@ -101,20 +103,25 @@ def _uuid(n: int, kind: int) -> str:
     return f"{kind:04x}{n:04x}-61cb-4c03-9d28-80fed5dfa1dc"
 
 
-def bambu_parts(P: np.ndarray, F: np.ndarray, labels: np.ndarray, palette: list[dict[str, Any]], name: str) -> dict[str, str]:
+def bambu_parts(P: np.ndarray, F: np.ndarray, labels: np.ndarray, palette: list[dict[str, Any]], name: str, *, generator: str = BAMBU_APP) -> dict[str, str]:
     """The files of a Bambu Studio / OrcaSlicer project: the object as a component whose mesh lives in its own model file
     (with the painting on its triangles), the object and plate description, and the filaments of the project."""
     title = name or "figure"
     half = 0.5 * float(P[:, 2].max() - P[:, 2].min())
     local = P - np.array([0.0, 0.0, half])                 # the mesh centred on its own origin, as the slicers keep it
     codes = [f' paint_color="{paint_code(k + 1)}"' if k else "" for k in range(len(palette))]
-    extra = [codes[k] for k in np.asarray(labels, np.int64).tolist()]
+    labels = np.asarray(labels, np.int64)
+    extra = [codes[k] for k in labels.tolist()]
+    counts = np.bincount(labels, minlength=len(palette))
+    painted_slots = [{"slot": k + 1, "colour": c["hex"].upper(), "faces": int(counts[k])}
+                     for k, c in enumerate(palette) if counts[k]]
     head = (f'<model unit="millimeter" xml:lang="en-US" xmlns="{CORE_NS}" xmlns:BambuStudio="{BAMBU_NS}" xmlns:p="{PRODUCTION_NS}" '
-            'requiredextensions="p">\n')
+            f'xmlns:nikias="{PRINT_COLOUR_NS}" requiredextensions="p">\n')
     notes = "; ".join(f"{k + 1} = {c.get('name', '')} {c.get('hex', '')}".strip() for k, c in enumerate(palette))
     place = f"1 0 0 0 1 0 0 0 1 {PLATE_CENTRE[0]:g} {PLATE_CENTRE[1]:g} {half:.6g}"
-    main = ('<?xml version="1.0" encoding="UTF-8"?>\n' + head + _meta("Application", BAMBU_APP) + _meta("BambuStudio:3mfVersion", "1")
+    main = ('<?xml version="1.0" encoding="UTF-8"?>\n' + head + _meta("Application", generator) + _meta("BambuStudio:3mfVersion", "1")
             + _meta("Title", title) + _meta("Description", "Filaments: " + notes)
+            + _meta("nikias:PaintedSlots", json.dumps(painted_slots, separators=(",", ":")))
             + f'<resources>\n<object id="2" p:UUID="{_uuid(1, 0)}" type="model">\n<components>\n'
             f'<component p:path="/3D/Objects/object_1.model" objectid="1" p:UUID="{_uuid(0, 1)}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>\n'
             f'</components>\n</object>\n</resources>\n<build p:UUID="{_uuid(1, 2)}">\n'
@@ -140,7 +147,6 @@ def bambu_parts(P: np.ndarray, F: np.ndarray, labels: np.ndarray, palette: list[
 
 def bambu_project_settings(palette: list[dict[str, Any]]) -> str:
     """The filaments of the project and nothing about the printer: as many as the palette, with its colours."""
-    import json
     n = len(palette)
     return json.dumps({"version": BAMBU_APP.split("-", 1)[1], "name": "project_settings", "from": "project",
                        "filament_colour": [c["hex"].upper() for c in palette], "filament_type": [str(c.get("material") or "PLA") for c in palette],
@@ -158,7 +164,9 @@ def _prusa_config(name: str, faces: int) -> str:
 
 def write_3mf(path: Path, P: np.ndarray, F: np.ndarray, labels: np.ndarray, palette: list[dict[str, Any]], name: str, dialect: str,
               project: bool = False) -> Path:
-    """``project`` (Bambu/Orca only) also writes the project's filaments. Off by default: OrcaSlicer 2.3.1 takes a
+    """The ``orca`` model keeps triangle painting and lets the CLI load its own presets.
+
+    ``project`` (``bambu`` only) also writes the project's filaments. Off by default: OrcaSlicer 2.3.1 takes a
     settings file that only lists filaments as unknown presets, warns and loads nothing; without it the figure opens
     painted and the filament colours are chosen in the slicer."""
     path = Path(path)
@@ -167,10 +175,11 @@ def write_3mf(path: Path, P: np.ndarray, F: np.ndarray, labels: np.ndarray, pale
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         z.writestr("[Content_Types].xml", CONTENT_TYPES)
         z.writestr("_rels/.rels", RELS)
-        if dialect == "bambu":
-            for member, text in bambu_parts(shifted, F, labels, palette, name).items():
+        if dialect in ("bambu", "orca"):
+            generator = "Nikias's Hoard" if dialect == "orca" else BAMBU_APP
+            for member, text in bambu_parts(shifted, F, labels, palette, name, generator=generator).items():
                 z.writestr(member, text)
-            if project:
+            if project and dialect == "bambu":
                 z.writestr("Metadata/project_settings.config", bambu_project_settings(palette))
             return path
         z.writestr("3D/3dmodel.model", model_xml(shifted, F, labels, palette, name, dialect))
