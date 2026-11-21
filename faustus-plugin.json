@@ -22,6 +22,10 @@
     "figure-look"
   ],
   "x-family": {
+    "isolated_instance": {
+      "data_env": "NIKIAS_DATA_DIR",
+      "port_env": "NIKIAS_PORT"
+    },
     "production": {
       "handoffs": [
         {"accepts": "closed-print-mesh", "produces": ["coloured-3mf"], "skill": "blender-asset-production", "check": {"en": "Open the 3MF in a slicer and check the colour regions, supports and reported geometry.", "es": "Abre el 3MF en el laminador y comprueba las zonas de color, los soportes y los avisos de geometría."}}
