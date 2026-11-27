@@ -26,16 +26,14 @@ untouched. Region and patch thresholds and the browser brush size are measured r
   when their line has breaks. Two small pieces that this closing separates with nothing engraved between them (the
   white of an eye pinched between its lid and its iris) become one piece again. Detail 1-5 goes from big parts to every engraved line (4 by default). Regions are what
   gets a colour, by the model or by a click.
-- **Colour from a textured model.** Add an OBJ, GLB, glTF or DAE, or use Blender to read an FBX or `.blend` with its saved pose.
+- **Colour from a textured model.** Add an OBJ, GLB, glTF or DAE. FBX and `.blend` references use a local converter and retain the saved pose.
   Nikias aligns the model to the figure and measures the fit. It samples nearby texture colours for each triangle,
   reduces them to the print palette and reports whether that palette covers the dominant reference colours.
   Automatic mode uses direct transfer when the model fits and vision-based colouring otherwise.
-- **References of the character**: pictures dropped, pasted or picked from your folders, and "Buscar imagen del
-  personaje", which looks the character up on the web by the figure's name and its collection: Pokémon take their
-  official artwork (regional forms, Gigantamax and mega included), other collections the lead picture of the
-  character's page on their wiki, and the encyclopedia when no wiki is known. The reference says which page it came
-  from and is removed like any other. A figure with no references looks one up by itself before colouring (it can be
-  switched off in Ajustes).
+- **Character references.** Drop, paste or select pictures from your folders. Use **Buscar imagen del personaje**
+  to search by the figure's name and collection. Depending on the collection, the search uses official artwork,
+  the lead image on the collection's wiki or an encyclopedia. The result keeps a link to its source page and can
+  be removed. Automatic colouring searches when there are no references and this option is enabled in Settings.
 - **Colour directed by the vision model**: the model looks at the references, chooses the palette, writes down which
   colour each part of the character takes (hair, each piece of clothing, skin, eyes, soles, what it holds), and is
   then shown the figure one region at a time (the figure in clay with a single region marked, from the side where it shows
@@ -57,15 +55,15 @@ untouched. Region and patch thresholds and the browser brush size are measured r
   size (1.2% by default) are merged into surrounding colours. Each colour shows its share of the surface and its patches.
 - **Views**: colour, regions and clay, in the 3-D view and as pictures from any side or zoomed on
   a spot (shaded from the geometry, so engraved lines read as they will print).
-- **Export.** Write painted 3MF for Bambu Studio / OrcaSlicer (`bambu`) or PrusaSlicer (`prusa`), a painted
-  model for OrcaSlicer with external presets (`orca`), a standard-colour 3MF (`color`), an OBJ with one material per
-  colour, or one STL surface per colour. The export includes a text palette. Flat and pivot variants that align
-  with the figure can inherit its colours. Files go to `Multicolor` next to the figure or to a configured folder.
-- **One solid per colour**: a multicolour 3MF in which every colour is its own closed mesh: as the parts of one
-  object for Bambu Studio / OrcaSlicer (each part with its filament), as the volumes of one object for PrusaSlicer
-  (each with its extruder), and as standard 3MF (a mesh object per colour with its colour as base material). The colour with the
-  largest surface area forms the core. The other colours form skins with a configurable depth that tapers in thin areas.
-  The export reports whether each resulting mesh is closed.
+- **Export.** Write painted 3MF (`bambu` or `prusa`), a painted 3MF for slicing with external presets (`orca`),
+  a standard-colour 3MF (`color`), an OBJ with one material per colour, or one STL surface per colour. The export
+  includes a text palette. Flat and pivot variants that align with the figure can inherit its colours. Files go
+  to `Multicolor` next to the figure or to a configured folder.
+- **Separate meshes by colour.** The 3MF export can write a mesh per colour as objects (`parts`), parts of one
+  object (`parts-bambu`), or volumes of one object (`parts-prusa`). The colour with the largest surface area
+  forms the core. The other colours form skins with an adjustable depth that tapers in thin areas.
+  The export checks and reports whether each mesh is closed. Closure depends on the input geometry and the
+  `repair` option.
 - **Printability**: the figure is checked for open edges, edges shared by more than two faces, faces turned the
   wrong way, shells pointing inwards, repeated and empty faces and dust, and its loose pieces are listed with
   those that would hang in the air. By default, exporting solids repairs the surface (repeated and empty faces and
@@ -102,9 +100,10 @@ python -m venv .venv
 ```
 
 It listens on http://127.0.0.1:5252. Data lives in `data/` (`NIKIAS_DATA_DIR` to move it). Set the folders with your
-figures, your references and your photos in Ajustes. Blender is found by itself (or set its path); it is only needed
-for FBX and `.blend` references. The vision model is the one the family resolves through Hoard Link, or the
-OpenAI-compatible server set in Ajustes. Tests: `python -m pytest`.
+figures, references and photos in Settings. For FBX and `.blend` references, Nikias looks for a local converter.
+Set its executable path in Settings if needed. Hoard Link provides the family's vision model, and Settings
+can point Nikias at another compatible chat API endpoint. See [FAUSTUS.md](FAUSTUS.md) for configuration details.
+Run the tests with `python -m pytest`.
 
 ## Limits
 
@@ -124,7 +123,7 @@ OpenAI-compatible server set in Ajustes. Tests: `python -m pytest`.
 
 - `nikias_hoard/engine/`: `mesh.py` (STL, welding, neighbours), `regions.py` (folds and regions), `source.py`
   (sampling a textured model, laying it over the figure, passing colours), `palette.py` (CIELAB, reduction),
-  `labels.py` (smoothing, islands, brush), `render.py` (pictures), `export.py` (3MF, OBJ, STL), `printable.py` (check and repair), `solids.py` (one closed solid per colour), `export_parts.py` (the solids as 3MF), `modelio.py` (textured
+  `labels.py` (smoothing, islands, brush), `render.py` (pictures), `export.py` (3MF, OBJ, STL), `printable.py` (check and repair), `solids.py` (separation by colour), `export_parts.py` (the separate meshes as 3MF), `modelio.py` (textured
   model readers), `pose.py` (part-by-part transfer for a model in another pose; not wired in yet), `blender.py` + `blender_export.py` (FBX and `.blend`).
 - `nikias_hoard/director.py` (the vision model's direction), `llm.py` (its client).
 - `nikias_hoard/services.py` (library, projects, references, jobs, palette, paint, export), `agent_tools.py` (the

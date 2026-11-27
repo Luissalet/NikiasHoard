@@ -27,16 +27,14 @@ se miden en proporción a la figura.
   regiones propias aunque su línea tenga cortes. Dos trozos pequeños que ese cierre separa sin que haya nada grabado
   entre ellos (el blanco de un ojo pellizcado entre el párpado y el iris) vuelven a ser una pieza. El detalle 1-5 va de partes grandes a cada línea grabada (4 por
   defecto). Las regiones son lo que recibe color, del modelo o de un clic.
-- **Color desde un modelo con texturas.** Añade un OBJ, GLB, glTF o DAE, o usa Blender para leer un FBX o un
-  `.blend` con su pose guardada. Nikias alinea el modelo con la figura y mide el encaje. Toma muestras de color
+- **Color desde un modelo con texturas.** Añade un OBJ, GLB, glTF o DAE. Las referencias FBX y `.blend` usan un conversor local que conserva la pose guardada. Nikias alinea el modelo con la figura y mide el encaje. Toma muestras de color
   de la textura cerca de cada triángulo, las reduce a la paleta de impresión e indica si la paleta cubre los
   colores dominantes de la referencia. El modo automático usa la transferencia directa cuando el modelo encaja
   y recurre al modelo de visión en los demás casos.
-- **Referencias del personaje**: imágenes que se sueltan, se pegan o se eligen de tus carpetas, y «Buscar imagen del
-  personaje», que lo busca en internet por el nombre de la figura y su colección: los Pokémon toman su ilustración
-  oficial (con sus formas regionales, Gigantamax y mega), las demás colecciones la imagen principal de la página del
-  personaje en su wiki y, si no hay wiki conocida, en la enciclopedia. La referencia dice de qué página salió y se
-  quita como cualquier otra. Una figura sin referencias la busca sola antes de colorear (se puede apagar en Ajustes).
+- **Referencias del personaje.** Suelta, pega o selecciona imágenes de tus carpetas. Usa **Buscar imagen del personaje**
+  para buscar por nombre y colección. Según la colección, la búsqueda usa ilustraciones oficiales, la imagen
+  principal de la wiki de la colección o una enciclopedia. El resultado conserva el enlace a su página de origen
+  y se puede quitar. El coloreado automático busca una imagen si faltan referencias y la opción está activada en Ajustes.
 - **Color dirigido por el modelo de visión**: el modelo mira las referencias, elige la paleta, escribe qué color lleva
   cada parte del personaje (pelo, cada prenda, piel, ojos, suelas, lo que sostiene) y después ve la figura
   región a región (la figura en arcilla con una sola región marcada, desde el lado donde más se ve, con un primer
@@ -61,16 +59,15 @@ se miden en proporción a la figura.
   y sus manchas.
 - **Vistas**: color, regiones y arcilla, en la vista 3D y como imágenes desde cualquier lado o
   ampliadas sobre un punto (sombreadas con la geometría, así que las líneas grabadas se ven como se imprimirán).
-- **Exportación.** Genera un 3MF pintado para Bambu Studio / OrcaSlicer (`bambu`) o PrusaSlicer (`prusa`),
-  un modelo pintado para OrcaSlicer con perfiles externos (`orca`), un 3MF de color estándar (`color`),
-  un OBJ con un material por color o una superficie STL por color. La exportación incluye la paleta en texto.
-  Las variantes flat y pivot que encajan con la figura pueden heredar sus colores. Los archivos se guardan en
-  `Multicolor` junto a la figura o en la carpeta configurada.
-- **Un sólido por color**: un 3MF multicolor en el que cada color es su propia malla cerrada: como piezas de un
-  objeto para Bambu Studio / OrcaSlicer (cada pieza con su filamento), como volúmenes de un objeto para PrusaSlicer
-  (cada uno con su extrusor) y como 3MF estándar (un objeto de malla por color con su color como material base).
-  El color con más superficie forma el núcleo. Los demás colores forman capas exteriores de grosor configurable,
-  que se reduce en zonas finas. La exportación indica si cada malla resultante está cerrada.
+- **Exportación.** Genera un 3MF pintado (`bambu` o `prusa`), un 3MF pintado para laminar con perfiles externos
+  (`orca`), un 3MF de color estándar (`color`), un OBJ con un material por color o una superficie STL por color.
+  La exportación incluye la paleta en texto. Las variantes flat y pivot que encajan con la figura pueden heredar
+  sus colores. Los archivos se guardan en `Multicolor` junto a la figura o en la carpeta configurada.
+- **Mallas separadas por color.** La exportación 3MF puede guardar una malla por color como objetos (`parts`),
+  piezas de un objeto (`parts-bambu`) o volúmenes de un objeto (`parts-prusa`). El color con más superficie forma
+  el núcleo. Los demás colores forman capas exteriores de grosor configurable, que se reducen en zonas finas.
+  La exportación comprueba e indica si cada malla está cerrada. El cierre depende de la geometría de origen
+  y de la opción `repair`.
 - **Imprimibilidad**: se comprueba si la figura tiene aristas abiertas, aristas compartidas por más de dos caras,
   caras con la normal al revés, piezas con las normales hacia dentro, caras repetidas o sin área y motas, y se
   listan sus piezas sueltas con las que quedarían en el aire. Por defecto, al exportar los sólidos se repara la superficie
@@ -107,9 +104,11 @@ python -m venv .venv
 ```
 
 Escucha en http://127.0.0.1:5252. Los datos viven en `data/` (`NIKIAS_DATA_DIR` para moverlos). Las carpetas de
-figuras, referencias y fotos se indican en Ajustes. Blender se encuentra solo (o se indica su ruta); solo hace falta
-para referencias FBX y `.blend`. El modelo de visión es el que la familia resuelve por Hoard Link, o el servidor
-compatible con OpenAI que se indique en Ajustes. Tests: `python -m pytest`.
+figuras, referencias y fotos se indican en Ajustes. Para referencias FBX y `.blend`, Nikias busca un conversor local.
+Indica la ruta de su ejecutable en Ajustes si hace falta. Hoard Link proporciona el modelo de visión de la familia.
+En Ajustes también puedes indicar la dirección de otra API de chat compatible. Consulta [FAUSTUS.md](FAUSTUS.md)
+para ver los detalles de configuración.
+Ejecuta las pruebas con `python -m pytest`.
 
 ## Límites
 
@@ -129,7 +128,7 @@ compatible con OpenAI que se indique en Ajustes. Tests: `python -m pytest`.
 ## Dónde está cada cosa
 
 - `nikias_hoard/engine/`: `mesh.py` (STL, soldado, vecinos), `regions.py` (pliegues y regiones), `source.py`
-  (muestreo de un modelo con texturas, colocación sobre la figura, paso de color), `palette.py` (CIELAB, reducción), `labels.py` (suavizado, islas, pincel), `render.py` (imágenes), `export.py` (3MF, OBJ, STL), `printable.py` (comprobar y reparar), `solids.py` (un sólido cerrado por color), `export_parts.py` (los sólidos como 3MF),
+  (muestreo de un modelo con texturas, colocación sobre la figura, paso de color), `palette.py` (CIELAB, reducción), `labels.py` (suavizado, islas, pincel), `render.py` (imágenes), `export.py` (3MF, OBJ, STL), `printable.py` (comprobar y reparar), `solids.py` (separación por color), `export_parts.py` (las mallas separadas como 3MF),
   `modelio.py` (lectores de modelos con texturas), `pose.py` (paso de color parte a parte para un modelo en otra pose;
   todavía sin conectar), `blender.py` + `blender_export.py` (FBX y `.blend`).
 - `nikias_hoard/director.py` (la dirección del modelo de visión), `llm.py` (su cliente), `references.py` (la imagen
