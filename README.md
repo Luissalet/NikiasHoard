@@ -33,7 +33,7 @@ untouched. Region and patch thresholds and the browser brush size are measured r
 - **Character references.** Drop, paste or select pictures from your folders. Use **Buscar imagen del personaje**
   to search by the figure's name and collection. Depending on the collection, the search uses official artwork,
   the lead image on the collection's wiki or an encyclopedia. The result keeps a link to its source page and can
-  be removed. Automatic colouring searches when there are no references and this option is enabled in Settings.
+  be removed. Automatic colouring searches when there are no references and this option is enabled in **Ajustes (Settings)**.
 - **Colour directed by the vision model**: the model looks at the references, chooses the palette, writes down which
   colour each part of the character takes (hair, each piece of clothing, skin, eyes, soles, what it holds), and is
   then shown the figure one region at a time (the figure in clay with a single region marked, from the side where it shows
@@ -100,9 +100,10 @@ python -m venv .venv
 ```
 
 It listens on http://127.0.0.1:5252. Data lives in `data/` (`NIKIAS_DATA_DIR` to move it). Set the folders with your
-figures, references and photos in Settings. For FBX and `.blend` references, Nikias looks for a local converter.
-Set its executable path in Settings if needed. Hoard Link provides the family's vision model, and Settings
-can point Nikias at another compatible chat API endpoint. See [FAUSTUS.md](FAUSTUS.md) for configuration details.
+figures, references and photos in **Ajustes (Settings)**. For FBX and `.blend` references, Nikias looks for a local converter.
+Use **Ajustes (Settings)** to specify the converter's executable path if needed. Hoard Link provides the family's
+default vision model. You can also set a compatible chat API endpoint there. See [FAUSTUS.md](FAUSTUS.md)
+for configuration details.
 Run the tests with `python -m pytest`.
 
 ## Limits
