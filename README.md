@@ -7,11 +7,10 @@ Colouring studio for multi-colour 3D printing: gives a finished print figure a f
 ## What it is
 
 Colouring studio of the Hoard family. It opens a finished, single-colour print figure (an STL sculpt) and decides which
-of a few colours (3-4 by default) every triangle takes, from a textured model of the same figure or from pictures of
+of a few colours (four by default) every triangle takes, from a textured model of the same figure or from pictures of
 the character, which it looks up by itself when the figure brings none. The result is the digital file: a painted 3MF
-the slicer opens with its colours; which material prints each one is up to whoever prints it. The figure itself is
-untouched. Nothing depends on the figure's size: regions, patches and the brush are measured as a share of it, so a
-figure colours the same at any scale.
+the slicer opens with its colours. The person printing chooses the material for each colour. The figure itself is
+untouched. Region and patch thresholds and the browser brush size are measured relative to the figure.
 
 ## What it does
 
@@ -27,11 +26,10 @@ figure colours the same at any scale.
   when their line has breaks. Two small pieces that this closing separates with nothing engraved between them (the
   white of an eye pinched between its lid and its iris) become one piece again. Detail 1-5 goes from big parts to every engraved line (4 by default). Regions are what
   gets a colour, by the model or by a click.
-- **Colour from a textured model**: add the game model or the `.blend` the figure was posed in (OBJ, GLB, glTF, DAE; Model transfer reports the dominant reference colours and checks them against the palette entries that cover the resulting surface.
-  FBX and `.blend` through Blender, with the saved pose applied). It is laid over the figure by itself, whatever its
-  units and orientation, and the fit is measured. When the shapes agree, each face takes the colour the texture has
-  at the nearest point, and the colours are reduced to the print palette. When they do not (another pose), the model
-  stays as a reference picture for the vision model.
+- **Colour from a textured model.** Add an OBJ, GLB, glTF or DAE, or use Blender to read an FBX or `.blend` with its saved pose.
+  Nikias aligns the model to the figure and measures the fit. It samples nearby texture colours for each triangle,
+  reduces them to the print palette and reports whether that palette covers the dominant reference colours.
+  Automatic mode uses direct transfer when the model fits and vision-based colouring otherwise.
 - **References of the character**: pictures dropped, pasted or picked from your folders, and "Buscar imagen del
   personaje", which looks the character up on the web by the figure's name and its collection: Pokémon take their
   official artwork (regional forms, Gigantamax and mega included), other collections the lead picture of the
@@ -56,28 +54,28 @@ figure colours the same at any scale.
   Shift + click fills only the patch. "Mancha" fills the single-colour patch under the cursor, or drag a brush of
   a size set as a percentage of the figure's; Alt + click picks a colour; the last 20 changes can be undone.
 - **Clean-up**: borders between colours are straightened and patches narrower than a percentage of the figure's
-  size (1.2 % by default) join their surroundings, so no speckle reaches the slicer. Each colour shows its share of the surface and its patches.
+  size (1.2% by default) are merged into surrounding colours. Each colour shows its share of the surface and its patches.
 - **Views**: colour, regions and clay, in the 3-D view and as pictures from any side or zoomed on
   a spot (shaded from the geometry, so engraved lines read as they will print).
-- **Export**: a painted 3MF for Bambu Studio / OrcaSlicer, a painted model for slicing with external presets,
-  one for PrusaSlicer, a standard-colour 3MF, an OBJ with
-  one material per colour, one STL per colour, and a text file listing the colours. The figure's flat and
-  pivot variants take the colours from the figure and are written with it. Files go to a `Multicolor` folder next
-  to the figure, or to the folder you set.
+- **Export.** Write painted 3MF for Bambu Studio / OrcaSlicer (`bambu`) or PrusaSlicer (`prusa`), a painted
+  model for OrcaSlicer with external presets (`orca`), a standard-colour 3MF (`color`), an OBJ with one material per
+  colour, or one STL surface per colour. The export includes a text palette. Flat and pivot variants that align
+  with the figure can inherit its colours. Files go to `Multicolor` next to the figure or to a configured folder.
 - **One solid per colour**: a multicolour 3MF in which every colour is its own closed mesh: as the parts of one
   object for Bambu Studio / OrcaSlicer (each part with its filament), as the volumes of one object for PrusaSlicer
-  (each with its extruder), and as standard 3MF (a mesh object per colour with its colour as base material). A
-  colour is a skin of a set depth (a share of the figure's size, thinner where the figure is thin) on a core of
-  the colour with most surface; the solids fill the figure exactly and do not overlap.
+  (each with its extruder), and as standard 3MF (a mesh object per colour with its colour as base material). The colour with the
+  largest surface area forms the core. The other colours form skins with a configurable depth that tapers in thin areas.
+  The export reports whether each resulting mesh is closed.
 - **Printability**: the figure is checked for open edges, edges shared by more than two faces, faces turned the
   wrong way, shells pointing inwards, repeated and empty faces and dust, and its loose pieces are listed with
-  those that would hang in the air. Before writing the solids the surface is repaired (repeated and empty faces and
+  those that would hang in the air. By default, exporting solids repairs the surface (repeated and empty faces and
   dust dropped, every shell made to face outwards, open rims closed). Each separate piece (a base, glasses) can also
   be written as its own STL standing on the plate.
 
 ## Connection with Faustus and Hoard Hub
 
-Declares its production handoff from closed print mesh to coloured 3MF so a planner can put the slicer check after colouring.
+The production handoff takes a closed print mesh and produces a coloured 3MF. For slicing through the Hub,
+use `result_export` with `formats=["orca"]` and give the slicer filament presets in palette order.
 
 `faustus-plugin.json` (id `nikias`) registers the app as a Faustus plugin: Hoard Hub starts it on demand on port 5252
 and checks `/api/health`. The same operations the buttons use are available to assistants through MCP
@@ -112,19 +110,15 @@ OpenAI-compatible server set in Ajustes. Tests: `python -m pytest`.
 
 - Colours are per triangle: a border between two colours follows the figure's own triangles, so its sharpness is
   that of the mesh. On dense sculpts that is finer than a nozzle.
-- A textured model only passes its colours directly when it is in the same pose as the figure. For another pose it
-  is a reference for the vision model.
+- Direct transfer is intended for a textured model that fits the figure in the same pose. A different pose can be
+  used as a visual reference.
 - The vision model decides by regions. A colour change that no fold or engraved line marks (a pattern on a smooth
   surface) is not a region: it is painted with the brush or comes from a model that fits.
-- The painted 3MF carries which colour (1, 2, 3…) each triangle uses, not the slicer project: which material each
-  number is gets chosen in the slicer, with the list of colours written next to it. The Bambu/Orca file has been
-  opened in OrcaSlicer 2.3.1; the PrusaSlicer and standard-colour files are checked by structure only. The
-  one-solid-per-colour files are read back as separate closed bodies by 3MF libraries; the filament of each part is
-  written in the slicers' own fields.
+- Painted 3MF assigns colour slots per triangle. Choose the matching filament presets in the slicer using the
+  exported palette. The separate solid-parts formats use a single-colour core and coloured outer skins.
 - The picture looked up on the web is the lead one of the page named like the figure: when the file name is not the
   character's, it may bring something else; it shows under Referencias and can be removed.
 - The vision model takes several minutes per figure (one question per dozen regions, plus the reviews).
-- Colours are on the surface, as slicers paint them. It does not cut the figure into one closed solid per colour.
 
 ## Project layout
 
@@ -141,4 +135,4 @@ OpenAI-compatible server set in Ajustes. Tests: `python -m pytest`.
 
 ## Licence
 
-MIT. Third-party notices in `THIRD_PARTY_NOTICES.md`.
+[MIT](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md).
