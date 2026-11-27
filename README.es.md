@@ -7,11 +7,11 @@ Estudio de coloreado para impresión 3D multicolor: reparte unos pocos colores p
 ## Qué es
 
 El estudio de coloreado de la familia Hoard. Abre una figura de impresión terminada y de un solo color (un STL) y
-decide en cuál de unos pocos colores (3-4 por defecto) va cada triángulo, a partir de un modelo con texturas de la
+decide en cuál de unos pocos colores (cuatro por defecto) va cada triángulo, a partir de un modelo con texturas de la
 misma figura o de imágenes del personaje, que busca él mismo si la figura no trae ninguna. El resultado es el archivo
 digital: un 3MF pintado que el laminador abre con sus colores; con qué material se imprime cada uno lo decide quien lo
-imprime. La figura original no se toca. Nada depende del tamaño de la figura: regiones, manchas y pincel se miden en
-proporción a ella, así que se colorea igual a cualquier escala.
+imprime. La figura original se conserva. Los umbrales de regiones y manchas y el tamaño del pincel del navegador
+se miden en proporción a la figura.
 
 ## Qué hace
 
@@ -27,16 +27,14 @@ proporción a ella, así que se colorea igual a cualquier escala.
   regiones propias aunque su línea tenga cortes. Dos trozos pequeños que ese cierre separa sin que haya nada grabado
   entre ellos (el blanco de un ojo pellizcado entre el párpado y el iris) vuelven a ser una pieza. El detalle 1-5 va de partes grandes a cada línea grabada (4 por
   defecto). Las regiones son lo que recibe color, del modelo o de un clic.
-- **Color desde un modelo con texturas**: se añade el modelo del juego o el `.blend` donde se posó la figura (OBJ, La transferencia desde un modelo indica los colores dominantes de la referencia y los coteja con los tonos de la paleta que cubren la superficie resultante.
-  GLB, glTF, DAE; FBX y `.blend` a través de Blender, con la pose guardada aplicada). Se coloca solo sobre la figura,
-  tenga las unidades y la orientación que tenga, y se mide el encaje. Si las formas coinciden, cada cara toma el
-  color que la textura tiene en el punto más cercano y los colores se reducen a la paleta de impresión. Si no (otra
-  pose), el modelo queda como imagen de referencia para el modelo de visión.
-- **Referencias del personaje**: imágenes que se sueltan, se pegan o se eligen de tus carpetas, y «Buscar imagen del
-  personaje», que lo busca en internet por el nombre de la figura y su colección: los Pokémon toman su ilustración
-  oficial (con sus formas regionales, Gigantamax y mega), las demás colecciones la imagen principal de la página del
-  personaje en su wiki y, si no hay wiki conocida, en la enciclopedia. La referencia dice de qué página salió y se
-  quita como cualquier otra. Una figura sin referencias la busca sola antes de colorear (se puede apagar en Ajustes).
+- **Color desde un modelo con texturas.** Añade un OBJ, GLB, glTF o DAE. Las referencias FBX y `.blend` usan un conversor local que conserva la pose guardada. Nikias alinea el modelo con la figura y mide el encaje. Toma muestras de color
+  de la textura cerca de cada triángulo, las reduce a la paleta de impresión e indica si la paleta cubre los
+  colores dominantes de la referencia. El modo automático usa la transferencia directa cuando el modelo encaja
+  y recurre al modelo de visión en los demás casos.
+- **Referencias del personaje.** Suelta, pega o selecciona imágenes de tus carpetas. Usa **Buscar imagen del personaje**
+  para buscar por nombre y colección. Según la colección, la búsqueda usa ilustraciones oficiales, la imagen
+  principal de la wiki de la colección o una enciclopedia. El resultado conserva el enlace a su página de origen
+  y se puede quitar. El coloreado automático busca una imagen si faltan referencias y la opción está activada en Ajustes.
 - **Color dirigido por el modelo de visión**: el modelo mira las referencias, elige la paleta, escribe qué color lleva
   cada parte del personaje (pelo, cada prenda, piel, ojos, suelas, lo que sostiene) y después ve la figura
   región a región (la figura en arcilla con una sola región marcada, desde el lado donde más se ve, con un primer
@@ -57,26 +55,29 @@ proporción a ella, así que se colorea igual a cualquier escala.
   color y Mayús + clic pinta solo la mancha. «Mancha» rellena la mancha de un solo color bajo el cursor, o se arrastra un
   pincel cuyo tamaño es un porcentaje del de la figura; Alt + clic coge un color; se deshacen los últimos 20 cambios.
 - **Limpieza**: los bordes entre colores se enderezan y las manchas más estrechas que un porcentaje del tamaño de la
-  figura (1,2 % por defecto) se unen a lo que las rodea. Cada color muestra su parte de la superficie y sus manchas.
+  figura (1,2 % por defecto) se funden con los colores que las rodean. Cada color muestra su parte de la superficie
+  y sus manchas.
 - **Vistas**: color, regiones y arcilla, en la vista 3D y como imágenes desde cualquier lado o
   ampliadas sobre un punto (sombreadas con la geometría, así que las líneas grabadas se ven como se imprimirán).
-- **Exportar**: un 3MF pintado para Bambu Studio / OrcaSlicer, un modelo pintado para laminar con perfiles externos,
-  otro para PrusaSlicer, un 3MF de color estándar, un
-  OBJ con un material por color, un STL por color y un texto con la lista de colores. Las variantes flat
-  y pivot de la figura toman sus colores y se escriben con ella. Los archivos van a una carpeta `Multicolor` junto a
-  la figura, o a la carpeta que se indique.
-- **Un sólido por color**: un 3MF multicolor en el que cada color es su propia malla cerrada: como piezas de un
-  objeto para Bambu Studio / OrcaSlicer (cada pieza con su filamento), como volúmenes de un objeto para PrusaSlicer
-  (cada uno con su extrusor) y como 3MF estándar (un objeto de malla por color con su color como material base).
-  Un color es una piel de una profundidad fija (una parte del tamaño de la figura, más fina donde la figura es fina)
-  sobre un núcleo del color con más superficie; los sólidos llenan la figura exactamente y no se solapan.
+- **Exportación.** Genera un 3MF pintado (`bambu` o `prusa`), un 3MF pintado para laminar con perfiles externos
+  (`orca`), un 3MF de color estándar (`color`), un OBJ con un material por color o una superficie STL por color.
+  La exportación incluye la paleta en texto. Las variantes flat y pivot que encajan con la figura pueden heredar
+  sus colores. Los archivos se guardan en `Multicolor` junto a la figura o en la carpeta configurada.
+- **Mallas separadas por color.** La exportación 3MF puede guardar una malla por color como objetos (`parts`),
+  piezas de un objeto (`parts-bambu`) o volúmenes de un objeto (`parts-prusa`). El color con más superficie forma
+  el núcleo. Los demás colores forman capas exteriores de grosor configurable, que se reducen en zonas finas.
+  La exportación comprueba e indica si cada malla está cerrada. El cierre depende de la geometría de origen
+  y de la opción `repair`.
 - **Imprimibilidad**: se comprueba si la figura tiene aristas abiertas, aristas compartidas por más de dos caras,
   caras con la normal al revés, piezas con las normales hacia dentro, caras repetidas o sin área y motas, y se
-  listan sus piezas sueltas con las que quedarían en el aire. Antes de escribir los sólidos se repara la superficie
+  listan sus piezas sueltas con las que quedarían en el aire. Por defecto, al exportar los sólidos se repara la superficie
   (se quitan caras repetidas, sin área y motas, se orienta cada pieza hacia fuera y se cierran los bordes abiertos).
   Cada pieza suelta (una base, unas gafas) se puede escribir también como un STL propio apoyado en la plataforma.
 
 ## Conexión con Faustus y Hoard Hub
+
+El relevo de producción parte de una malla cerrada y genera un 3MF coloreado. Para laminar a través del Hub,
+usa `result_export` con `formats=["orca"]` e indica al laminador los perfiles de filamento en el orden de la paleta.
 
 `faustus-plugin.json` (id `nikias`) registra la app como plugin de Faustus: Hoard Hub la arranca cuando hace falta en
 el puerto 5252 y comprueba `/api/health`. Lo mismo que hacen los botones está disponible para los asistentes por MCP
@@ -103,30 +104,31 @@ python -m venv .venv
 ```
 
 Escucha en http://127.0.0.1:5252. Los datos viven en `data/` (`NIKIAS_DATA_DIR` para moverlos). Las carpetas de
-figuras, referencias y fotos se indican en Ajustes. Blender se encuentra solo (o se indica su ruta); solo hace falta
-para referencias FBX y `.blend`. El modelo de visión es el que la familia resuelve por Hoard Link, o el servidor
-compatible con OpenAI que se indique en Ajustes. Tests: `python -m pytest`.
+figuras, referencias y fotos se indican en Ajustes. Para referencias FBX y `.blend`, Nikias busca un conversor local.
+Indica la ruta de su ejecutable en Ajustes si hace falta. Hoard Link proporciona el modelo de visión de la familia.
+En Ajustes también puedes indicar la dirección de otra API de chat compatible. Consulta [FAUSTUS.md](FAUSTUS.md)
+para ver los detalles de configuración.
+Ejecuta las pruebas con `python -m pytest`.
 
 ## Límites
 
 - El color va por triángulo: el borde entre dos colores sigue los triángulos de la figura, así que es tan fino como
   la malla. En esculpidos densos es más fino que una boquilla.
-- Un modelo con texturas solo pasa su color directamente si está en la misma pose que la figura. En otra pose es una
-  referencia para el modelo de visión.
+- La transferencia directa está pensada para un modelo con texturas que encaje con la figura en la misma pose.
+  Un modelo en otra pose puede servir de referencia visual.
 - El modelo de visión decide por regiones. Un cambio de color que ningún pliegue ni línea grabada marca (un dibujo
   sobre una superficie lisa) no es una región: se pinta con el pincel o sale de un modelo que encaje.
-- El 3MF pintado lleva qué color (1, 2, 3…) usa cada triángulo, no el proyecto del laminador: qué material es cada
-  número se elige en el laminador, con la lista de colores que se escribe al lado. El archivo de Bambu/Orca se ha
-  abierto en OrcaSlicer 2.3.1; los de PrusaSlicer y de color estándar están comprobados solo por estructura.
+- El 3MF pintado asigna un número de color a cada triángulo. Elige los perfiles de filamento correspondientes en
+  el laminador con la paleta exportada. Los formatos de sólidos separados usan un núcleo de un solo color y capas
+  exteriores coloreadas.
 - La imagen que se busca en internet es la principal de la página con el nombre de la figura: si el nombre del archivo
   no es el del personaje, puede traer otra cosa; se ve en Referencias y se quita.
 - El modelo de visión tarda varios minutos por figura (una pregunta por cada docena de regiones más las revisiones).
-- El color va en la superficie, como lo pintan los laminadores. No corta la figura en un sólido cerrado por color.
 
 ## Dónde está cada cosa
 
 - `nikias_hoard/engine/`: `mesh.py` (STL, soldado, vecinos), `regions.py` (pliegues y regiones), `source.py`
-  (muestreo de un modelo con texturas, colocación sobre la figura, paso de color), `palette.py` (CIELAB, reducción), `labels.py` (suavizado, islas, pincel), `render.py` (imágenes), `export.py` (3MF, OBJ, STL), `printable.py` (comprobar y reparar), `solids.py` (un sólido cerrado por color), `export_parts.py` (los sólidos como 3MF),
+  (muestreo de un modelo con texturas, colocación sobre la figura, paso de color), `palette.py` (CIELAB, reducción), `labels.py` (suavizado, islas, pincel), `render.py` (imágenes), `export.py` (3MF, OBJ, STL), `printable.py` (comprobar y reparar), `solids.py` (separación por color), `export_parts.py` (las mallas separadas como 3MF),
   `modelio.py` (lectores de modelos con texturas), `pose.py` (paso de color parte a parte para un modelo en otra pose;
   todavía sin conectar), `blender.py` + `blender_export.py` (FBX y `.blend`).
 - `nikias_hoard/director.py` (la dirección del modelo de visión), `llm.py` (su cliente), `references.py` (la imagen
@@ -139,4 +141,4 @@ compatible con OpenAI que se indique en Ajustes. Tests: `python -m pytest`.
 
 ## Licencia
 
-MIT. Avisos de terceros en `THIRD_PARTY_NOTICES.md`.
+[MIT](LICENSE). Consulta los [avisos de terceros](THIRD_PARTY_NOTICES.md).
